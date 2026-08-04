@@ -1,1 +1,1 @@
-layer_status=主分支复核中
+layer_status=主分支与练习分支均已检查
