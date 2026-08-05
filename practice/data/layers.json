@@ -1,0 +1,17 @@
+[
+  {
+    "name": "生态保护红线",
+    "type": "polygon",
+    "crs": "EPSG:4490"
+  },
+  {
+    "name": "永久基本农田",
+    "type": "polygon",
+    "crs": "EPSG:4490"
+  },
+  {
+    "name": "道路",
+    "type": "line",
+    "crs": null
+  }
+]

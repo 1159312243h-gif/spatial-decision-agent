@@ -147,3 +147,47 @@
 - 将 `master` 统一为 `main`
 - 创建 GitHub 空仓库并首次 `push`
 - 后续再进入 GIS Agent 正式开发
+
+## 2026-08-05
+
+### 今日完成
+
+- 理解了 LLM、Token、Prompt、Tool、Agent 和 Skill 的关系
+- 创建了 `Layer` 类，练习了类、对象、属性和函数参数
+- 将图层统计代码拆分为 `models.py`、`service.py` 和 `io.py`
+- 使用 `pathlib` 和 `json` 完成 UTF-8 JSON 文件读取
+- 使用 `try/except` 处理文件不存在和 JSON 格式错误
+- 创建了 `run_layer_stats.py` 程序入口
+- 使用 `unittest` 完成 6 项自动化测试
+- 创建 GitHub 私有仓库并完成首次推送
+
+### 今日理解
+
+- 模块是一个 Python 文件，包是组织多个模块的目录
+- 类是创建对象的模板，对象保存具体数据
+- `raise` 用于主动报告错误，`try/except` 用于处理可预期错误
+- JSON 的 `null` 读取到 Python 后会变成 `None`
+- Tool 负责执行动作，Skill 负责描述可复用的执行方法
+- `git commit` 保存到本地，`git push` 才会上传到 GitHub
+
+### 测试结果
+
+- 正常图层数据：通过
+- 空列表：通过
+- 缺少字段：通过
+- 重复图层：通过
+- JSON 格式错误：通过
+- 文件不存在：通过
+- 总计 6 项测试，全部通过
+
+### 遇到的问题
+
+- Codex 审批服务返回 403，Git 写操作改在本地 PowerShell 执行
+- 首次推送 GitHub 时网络连接超时，重新连接后推送成功
+- 修改 Git 用户邮箱只影响未来提交，不会自动修改历史提交
+
+### 明日任务
+
+- 复习模块、包、类和异常处理
+- 学习如何为函数和类编写更完整的测试
+- 根据后续计划继续完善图层数据处理能力
