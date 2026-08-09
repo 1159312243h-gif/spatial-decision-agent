@@ -244,3 +244,85 @@
 - 开始 FastAPI 基础开发
 - 实现 `/health`、`/documents` 和 `/chat` 三个接口
 - 完成参数校验、接口测试和 Swagger 联调
+## 2026-08-08
+
+### 今日完成
+
+- 安装并验证 FastAPI、Uvicorn、pytest 和 httpx
+- 建立 `app/api`、`app/schemas` 和 `app/services` 分层目录
+- 实现 `GET /health` 健康检查接口
+- 实现 `POST /documents` 文档元数据桩接口
+- 实现 `POST /chat` 选址问题桩接口
+- 使用 Pydantic 校验缺失字段、空问题和非法项目类型
+- 通过 Swagger 完成三个接口的手工联调
+- 新增 6 项 API 自动化测试
+- 运行全部测试，12 项测试全部通过
+- 完善 README 中的安装、启动、接口和测试说明
+
+### 今日理解
+
+- FastAPI 用于把 Python 函数组织成可以通过 HTTP 调用的后端接口
+- Uvicorn 负责启动服务并监听请求
+- Swagger 是接口说明和调试工具，不负责理解自然语言
+- Pydantic 负责把不合法的请求拦截在业务逻辑之前
+- `api` 层定义 HTTP 路由，`schemas` 层定义数据结构，`services` 层处理业务逻辑
+- 当前 `/documents` 和 `/chat` 是桩接口，尚未接入真实 Agent、RAG、数据库或 GIS 分析
+- 自动化测试可以重复验证正常请求和异常输入，比只依赖 Swagger 手工点击更可靠
+
+### 遇到的问题
+
+- `api/documents.py` 与 `schemas/documents.py` 内容一度放反，导致 Uvicorn 重载失败和 Swagger 白屏
+- 通过检查 Uvicorn 终端和模块内容定位问题，交换文件内容后恢复
+- 直接遍历 `app.routes` 读取 `path` 时遇到 `_IncludedRouter`，改用 `app.openapi()["paths"]` 检查公开接口
+- pytest 出现 TestClient 依赖弃用 warning，但不影响当前 12 项测试结果，后续根据官方兼容说明统一处理
+
+### 调整说明
+
+- 因时间不足，跳过当天 ACM 和 Hot100 编程题，不补做、不挤占休息时间
+
+## 本周总结（2026-08-03 至 2026-08-09）
+
+### 本周完成
+
+- 创建并激活 Python 3.12 虚拟环境，掌握依赖隔离的基本方法
+- 创建本地 Git 仓库，完成首次提交、分支切换、合并和冲突处理
+- 创建 GitHub 私有仓库，配置远程地址并完成多次 push
+- 学习 Python 函数、列表、字典、集合、模块、包、类、异常处理和 JSON 读取
+- 将图层统计脚本拆分为模型、文件读取、业务统计和程序入口
+- 完成正常数据、空数据、字段缺失、重复图层、无效 JSON 和文件不存在测试
+- 学习 `git diff`、`git diff --stat` 和 `git diff --staged`
+- 完成一次 AI 生成代码审查，记录编码、可变默认参数、资源关闭、变量初始化和效率等问题
+- 完成两数之和与字母异位词分组练习，理解哈希表和哈希键设计
+- 审查简历项目真实性，删除无法证明的训练规模和效果指标
+- 学习 Self-Attention 中 Q、K、V、缩放、Softmax 和上下文融合
+- 建立 FastAPI 接口骨架，完成三个接口、Pydantic 校验、Swagger 联调和 API 自动化测试
+
+### 本周掌握
+
+- 能解释工作区、暂存区、本地仓库和远程仓库的区别
+- 能完成 Git 分支开发、制造冲突、解决冲突、提交和推送
+- 能使用 Python 包和模块拆分代码，并使用异常表达无效输入
+- 能读取 UTF-8 JSON 并将字典数据转换为对象
+- 能使用 unittest 和 pytest 验证正常路径及异常路径
+- 能解释 FastAPI、Uvicorn、Swagger、Pydantic 和桩接口各自的职责
+- 能解释 Q、K、V 和除以 `sqrt(d_k)` 的直观原因
+
+### 本周遗留问题
+
+- 当前 FastAPI 接口没有真实文件上传、持久化和文档解析能力
+- `/chat` 尚未接入 LLM、意图识别、RAG 或 GIS 工具
+- 项目类型目前只支持 `shopping_mall` 和 `logistics_park`
+- 测试客户端存在依赖弃用 warning，需要后续查阅官方兼容方案
+- Multi-Head Attention、位置编码和完整 Transformer 结构仍需继续学习
+- 简历中的项目效果指标需要等真实评测脚本和数据完成后补充
+
+### 下周目标
+
+- 学习 FastAPI 文件上传、配置管理和统一异常处理
+- 为 `/documents` 增加真实文件接收与元数据处理
+- 为 `/chat` 设计可扩展的意图和候选地块输入结构
+- 开始搭建项目文档解析与检索的最小流程
+- 保持 Git 小步提交、pytest 回归测试和 progress 记录
+- 恢复算法训练，但不挤占主项目开发和休息时间
+
+
