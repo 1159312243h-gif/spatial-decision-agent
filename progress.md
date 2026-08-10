@@ -326,3 +326,45 @@
 - 恢复算法训练，但不挤占主项目开发和休息时间
 
 
+## 2026-08-10
+
+### 今日完成
+
+- 复习 Token、上下文、消息角色和 Temperature
+- 使用 OpenAI Python SDK 调用公司九功模型
+- 通过原生 Responses API 完成最小聊天函数
+- 使用 `.env` 管理真实配置，并使用 `.env.example` 提供配置模板
+- 实现保留最近若干轮对话的滑动窗口
+- 完成物流园选址需求的任务拆分练习
+- 模型成功输出 5 个有顺序的执行步骤
+
+### 今日理解
+
+- Token 是模型处理文本的基本单位
+- 上下文由程序保存并在下一次请求中重新发送
+- System 规定规则，User 提出需求，Assistant 表示历史回复
+- Temperature 控制输出的随机程度，不代表模型的聪明程度
+- `.env` 保存真实配置且不能提交
+- `.env.example` 只能保存变量名称和占位符
+- 滑动窗口能够限制历史消息数量，避免上下文无限增长
+- Responses API 使用 `client.responses.create()` 发起请求
+
+### 遇到的问题
+
+- `practice.llm_api` 尚未创建，首次运行出现 `ModuleNotFoundError`
+- 创建 Python 包和 `client.py` 后解决
+- 最初误将真实配置写入 `.env.example`
+- 在 Git 暂存前替换为占位符，避免进入仓库
+- CC Switch 使用原生 Responses 格式，因此将调用方式从 Chat Completions 改为 Responses API
+
+### 遗留问题
+
+- 当前滑动窗口按照对话轮数限制，还没有按照 Token 数量限制
+- LLM API 和上下文模块还没有自动化测试
+- `/chat` 接口尚未接入真实模型调用
+
+### 下一步
+
+- 为上下文窗口编写单元测试
+- 处理模型超时、鉴权失败和空回复异常
+- 根据后续计划决定是否将真实模型接入 FastAPI `/chat`
