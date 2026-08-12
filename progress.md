@@ -368,3 +368,68 @@
 - 为上下文窗口编写单元测试
 - 处理模型超时、鉴权失败和空回复异常
 - 根据后续计划决定是否将真实模型接入 FastAPI `/chat`
+
+## 2026-08-11
+
+### 今日完成
+
+- 整理 Token、上下文窗口、消息角色和 Temperature 四张知识卡
+- 阅读并解释现有 `ConversationContext` 滑动窗口代码
+- 确认滑动窗口保留系统指令和最近完整问答，超出轮数后自动淘汰最旧轮次
+- 审查现有 `chat()` 函数的输入、输出、API 参数和上下文保存流程
+- 初步学习 Prompt 模板、Zero-shot、Few-shot 和结构化输出的基本关系
+
+### 今日理解
+
+- Token、系统指令、历史消息、当前问题和模型输出都会占用上下文容量
+- 当前滑动窗口按照完整问答轮数裁剪，并不按照真实 Token 数裁剪
+- 系统消息通过 `instructions` 单独传入，不会随旧对话一起被淘汰
+- Prompt 模板把稳定的任务规则与动态用户输入分开
+- Zero-shot 只提供任务说明，Few-shot 额外提供少量标准输入输出示例
+
+### 当前边界
+
+- 当前窗口按对话轮数限制，尚未按真实 Token 数限制
+- 滑动窗口没有旧消息摘要、持久化和多用户会话隔离
+- LLM API 和上下文模块还没有自动化测试
+
+### 下一步
+
+- 深入整理 Prompt 模板、Few-shot、输出约束和非法 JSON
+- 建立选址需求 Pydantic 输出模型骨架
+- 完成一次合法 JSON 的正常解析
+
+## 2026-08-12
+
+### 今日完成
+
+- 深入学习 Tokenizer、BPE、BBPE、WordPiece、Unigram 和 SentencePiece
+- 学习 Greedy Search、Beam Search、Top-k、Top-p 和 Temperature 等生成策略
+- 阅读并整理前辈的 Prompt 工程资料，形成适用于当前选址 Agent 的项目版笔记
+- 整理 Zero-shot/Few-shot、输出约束、非法 JSON 三张知识卡
+- 建立 `SiteSelectionRequirement` Pydantic 输出模型骨架
+- 使用 `model_validate_json()` 完成一次合法 JSON 到 Pydantic 对象的正常解析
+
+### 今日理解
+
+- Tokenizer 负责在文本与 Token ID 之间编码和解码，生成策略负责选择下一个 Token
+- Prompt 模板负责固定角色、任务、输入边界、约束和输出协议
+- Few-shot 通过少量标准输入输出示例帮助模型稳定字段映射和缺失值处理
+- 模型返回 JSON 文本后，仍需经过 JSON 语法解析和 Pydantic 字段校验
+- 非法 JSON 属于语法错误；字段缺失、类型错误和取值越界属于 Pydantic 校验错误
+- 当前 Pydantic 模型表示选址需求，不代表已经生成合规审查结论
+- 当前项目使用 Responses API，不能直接照抄 Chat Completions 的结构化输出代码
+
+### 当前边界
+
+- 已完成手工构造的合法 JSON 解析，尚未接入真实 API 返回文本
+- 尚未实现非法 JSON、字段缺失和类型错误测试
+- 公司模型接口是否支持服务端原生 Structured Outputs 尚未验证
+- Prompt 只能约束模型输出倾向，不能代替 GIS 计算、政策证据和规则引擎
+
+### 下一步
+
+- 建立可复用的选址需求提取 Prompt 模板和 Few-shot 示例
+- 将真实 API 返回的 JSON 文本解析为 Pydantic 对象
+- 覆盖合法 JSON、非法 JSON、缺字段、错误类型和额外字段测试
+- 设计明确的解析失败提示与有限重试策略
