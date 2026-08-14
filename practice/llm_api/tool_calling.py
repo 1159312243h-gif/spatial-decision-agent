@@ -1,4 +1,5 @@
 import json
+from time import perf_counter
 from typing import Any
 
 from openai import OpenAI
@@ -22,12 +23,39 @@ def _function_calls(response: Any) -> list[Any]:
     ]
 
 
+def _safe_error_message(error: ValidationError | ValueError) -> str:
+    """Summarize an error without copying complete input values into records."""
+
+    if isinstance(error, ValidationError):
+        messages = []
+        for item in error.errors():
+            location = ".".join(str(part) for part in item["loc"]) or "input"
+            messages.append(f"{location}: {item['msg']}")
+        return "; ".join(messages)
+
+    return str(error)
+
+
 def _tool_output(function_call: Any) -> dict[str, str]:
+    started_at = perf_counter()
+
     try:
         result = execute_tool(function_call.name, function_call.arguments)
-        payload = {"ok": True, "result": result}
+        payload = {
+            "ok": True,
+            "status": "success",
+            "result": result,
+            "error_type": None,
+        }
     except (ValidationError, ValueError) as exc:
-        payload = {"ok": False, "error": str(exc)}
+        payload = {
+            "ok": False,
+            "status": "error",
+            "error": _safe_error_message(exc),
+            "error_type": type(exc).__name__,
+        }
+
+    payload["elapsed_ms"] = round((perf_counter() - started_at) * 1000, 3)
 
     return {
         "type": "function_call_output",

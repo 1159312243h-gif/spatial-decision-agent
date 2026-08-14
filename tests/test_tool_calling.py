@@ -8,10 +8,13 @@ def text_response(response_id: str, text: str) -> SimpleNamespace:
     return SimpleNamespace(id=response_id, output=[], output_text=text)
 
 
-def tool_response(arguments: str) -> SimpleNamespace:
+def tool_response(
+    arguments: str,
+    name: str = "calculator",
+) -> SimpleNamespace:
     call = SimpleNamespace(
         type="function_call",
-        name="calculator",
+        name=name,
         arguments=arguments,
         call_id="call_001",
     )
@@ -57,7 +60,12 @@ def test_calculation_runs_tool_and_returns_final_answer() -> None:
     tool_result = second_request["input"][2]
     assert tool_result["type"] == "function_call_output"
     assert tool_result["call_id"] == "call_001"
-    assert json.loads(tool_result["output"]) == {"ok": True, "result": 74.0}
+    payload = json.loads(tool_result["output"])
+    assert payload["ok"] is True
+    assert payload["status"] == "success"
+    assert payload["result"] == 74.0
+    assert payload["error_type"] is None
+    assert payload["elapsed_ms"] >= 0
 
 
 def test_ordinary_chat_does_not_run_tool() -> None:
@@ -81,7 +89,32 @@ def test_missing_argument_returns_error_to_model() -> None:
     tool_result = client.responses.requests[1]["input"][2]
     payload = json.loads(tool_result["output"])
     assert payload["ok"] is False
+    assert payload["status"] == "error"
+    assert payload["error_type"] == "ValidationError"
+    assert payload["elapsed_ms"] >= 0
     assert "b" in payload["error"]
+    assert "input_value" not in payload["error"]
+
+
+def test_unknown_tool_returns_safe_error_record() -> None:
+    client = fake_client(
+        tool_response(
+            '{"operation":"add","a":1,"b":2}',
+            name="python",
+        ),
+        text_response("resp_002", "请求的工具不可用。"),
+    )
+
+    answer = run_tool_calling("请调用 python 工具。", client, "test-model")
+
+    assert answer == "请求的工具不可用。"
+    tool_result = client.responses.requests[1]["input"][2]
+    payload = json.loads(tool_result["output"])
+    assert payload["ok"] is False
+    assert payload["status"] == "error"
+    assert payload["error_type"] == "ValueError"
+    assert payload["error"] == "未注册的工具：python"
+    assert payload["elapsed_ms"] >= 0
 
 
 def test_blank_message_is_rejected_before_api_call() -> None:
