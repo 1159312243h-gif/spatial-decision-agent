@@ -523,3 +523,57 @@
 - 验证不同问题能够选择正确工具，非法参数和未知工具不会执行
 - 后续结合 LangGraph 学习补画选址任务分解 DAG
 - 算法练习在独立时段补充，不挤占项目主线
+## 2026-08-15
+
+### 今日完成
+
+- 复核 `SiteSelectionRequirement` Pydantic 结构化输出测试，合法 JSON、非法 JSON、缺字段、错误类型和额外字段共 5 项通过
+- 整理 Tool、Skill、Function Calling 的定义、区别、调用关系、安全边界和选址项目映射
+- 实现通用 `ToolDefinition` 与 `ToolRegistry`
+- 统一注册 `calculator`、`current_date`、`project_type_profile` 三个 Tool
+- 使用各 Tool 的 Pydantic 参数模型生成 JSON Schema 并执行应用侧二次校验
+- 加入未知工具拦截、重复注册拦截、工具超时、安全错误摘要、耗时与错误类型记录
+- 将原生 Responses Function Calling 循环改为从 Registry 获取 Tool Schema 和执行实现
+- 保持原有 `run_tool_calling()` 调用方式兼容，并保留最大工具轮数限制
+- 多工具专项测试 21 项通过
+- 项目全量测试 38 项通过，保留 1 条已有 Starlette TestClient 弃用 warning
+- 真实模型成功选择 `current_date`，返回 Asia/Shanghai 时区的 2026-08-15
+- 真实模型成功选择 `project_type_profile`，返回物流园的基础审查重点
+
+### 今日理解
+
+- Skill 定义一类业务任务如何完成，Tool 执行一个确定性动作，Function Calling 让模型结构化提出工具名称和参数
+- 模型只提出 `function_call`，真正的白名单检查、参数校验、执行和结果回传都由应用程序负责
+- ToolRegistry 是工具执行边界，不是 Agent、Skill 或 Workflow
+- JSON Schema 可以约束模型输出，但应用侧仍必须使用 Pydantic 重新校验
+- 固定业务前置检查应由 Skill 或 DAG 强制执行，不能全部交给模型自由选择
+- 项目类型查询只返回静态示例 Profile，不代表完成政策查询、GIS 分析或合规判断
+
+### 遇到的问题
+
+- Windows Python 环境缺少 IANA `tzdata`，`ZoneInfo("Asia/Shanghai")` 抛出 `ZoneInfoNotFoundError`
+- 当前日期工具只支持 Asia/Shanghai 和 UTC，因此改用标准库固定 UTC+8 与 UTC+0 偏移，不增加新依赖
+- 当前线程超时可以及时返回错误，但不能强制终止已开始运行的线程；真实外部工具仍需要底层客户端或 worker 超时
+
+### 测试情况
+
+- Pydantic 结构化输出测试：5 项通过
+- 计算器与原 Function Calling 回归：11 项通过
+- 多工具定向测试：21 项通过
+- 项目全量测试：38 项通过，1 条既有弃用 warning
+- 真实接口：计算器、日期查询、物流园项目类型查询均已完成验证
+
+### 当前边界
+
+- 当前三个 Tool 均为本地确定性示例工具
+- `project_type_profile` 使用静态映射，只支持 `shopping_mall` 与 `logistics_park`
+- 尚未实现 `ProjectIntakeSkill`、PlanningIntentAgent、LangGraph DAG、GIS Tool、政策 RAG 和 RuleEngine
+- `/chat` 尚未接入真实多工具 Function Calling 循环
+- 尚未实现持久化 ToolCall 审计、跨进程取消和真实外部服务重试
+
+### 下一步
+
+- 检查并提交 ToolRegistry、调用循环、测试、学习文档和本日进度
+- 后续进入 Agent 编排前，先定义 ProjectRequest、ProjectProfile、DatasetManifest 等领域合同
+- 学习 CRS、投影和几何有效性后，再实现空间数据验证 Tool
+- 保持 LLM、Skill、Tool、RuleEngine 和 Orchestrator 的职责边界
