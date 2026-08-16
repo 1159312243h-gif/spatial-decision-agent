@@ -4,3 +4,4 @@ pytest
 httpx
 openai
 python-dotenv
+langgraph

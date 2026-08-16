@@ -577,3 +577,62 @@
 - 后续进入 Agent 编排前，先定义 ProjectRequest、ProjectProfile、DatasetManifest 等领域合同
 - 学习 CRS、投影和几何有效性后，再实现空间数据验证 Tool
 - 保持 LLM、Skill、Tool、RuleEngine 和 Orchestrator 的职责边界
+## 2026-08-16
+
+### 今日完成
+
+- 整理 Agent、ReAct、Function Calling、ToolRegistry 与 LangGraph 的概念关系和职责边界
+- 整理 LangGraph State、Node、Edge 三张知识卡及闭卷复述提纲
+- 安装并确认 LangGraph `1.2.11`，同步加入 `requirements.txt`
+- 使用 `TypedDict` 定义最小 `AgentState`，包含消息、当前步骤、待执行工具、工具结果、错误、调用次数与上限、运行状态和最终答案
+- 为 `messages` 和 `tool_results` 配置追加 reducer，确保节点返回增量时保留历史记录
+- 使用 `create_initial_state()` 拦截空输入和非法工具调用上限，并避免跨请求共享可变列表
+- 搭建 `START -> input -> model -> tool/final -> END` 最小 LangGraph 图
+- 实现模型后的条件路由：普通回答直接结束，工具请求进入工具节点，超出调用上限时在执行前终止
+- 在工具节点复用现有 `ToolRegistry`，未重复实现计算器、日期和项目类型工具逻辑
+- 将工具成功结果和安全错误同时写回模型消息与结构化 `tool_results`
+- 覆盖普通对话、正确工具调用、未知工具、非法参数和循环上限五类图测试
+- AgentState 与 LangGraph 图专项测试 15 项通过
+- 项目全量测试 53 项通过，保留 1 条已有 Starlette TestClient 弃用 warning
+- 真实模型通过 LangGraph 成功选择日期工具，并返回 2026 年 8 月 16 日（Asia/Shanghai）
+
+### 今日理解
+
+- State 是整张图共享的数据合同，Node 只完成一个步骤，Edge 和条件路由负责决定下一步
+- `Annotated[list, operator.add]` 表示节点返回的列表增量会追加到旧状态，而不是覆盖历史记录
+- `pending_tool_calls` 表示当前待办，执行后必须覆盖为空，不能像历史消息一样持续追加
+- Tool Schema 只是提供给模型的工具说明，应用侧仍必须通过 ToolRegistry 白名单和 Pydantic 进行二次校验
+- 工具结果必须以 `function_call_output` 回传模型，模型才能基于真实 Observation 生成最终回答
+- 调用上限应在工具执行前判断，防止超限调用产生副作用
+- LangGraph 负责状态和流程编排，不等于业务 Agent，也不取代 Tool、RuleEngine 或安全校验
+- 当前系统保存可审计的消息、调用、结果和错误，不保存模型原始内部推理文本
+
+### 测试情况
+
+- `tests/test_agent_state.py`：10 项通过
+- `tests/test_agent_graph.py`：5 项通过
+- 项目全量测试：53 项通过，1 条既有弃用 warning
+- 真实接口：LangGraph 日期工具调用成功
+
+### 当前边界
+
+- 当前图只接入本地计算器、日期和静态项目类型三个示例工具
+- `TypedDict` 不提供 Pydantic 式运行时字段校验，公共入口依靠 `create_initial_state()` 建立合法初始状态
+- 公共入口能拦截空输入；若绕过入口直接以畸形 State 调用编译图，固定的 `input -> model` 边仍有改进空间
+- 尚未实现 checkpoint、跨请求持久化、人工审批和生产级调用审计
+- 尚未实现 PlanningIntentAgent、ProjectIntakeSkill、GIS Tool、政策 RAG、RuleEngine 和空间合规 DAG
+- FastAPI `/chat` 尚未接入 LangGraph
+- 当天算法题、周总结和知识卡抽查尚未完成，不能计入今日成果
+
+### 下一步
+
+- 完成本周周总结：列出完成项、未完成项、3 个问题和下周入口
+- 抽查至少 10 张知识卡，重点复述 Agent、ReAct、State、Node、Edge、Reducer 和工具安全边界
+- 检查本次代码与文档差异，提交并推送
+- 后续定义 ProjectRequest、ProjectType、ProjectProfile 和 DatasetManifest，再进入选址业务图
+
+### 周总结补充
+
+- 已完成 2026-08-10 至 2026-08-16 周总结，整理本周完成项、未完成项、三个主要问题和下周入口
+- 已建立 10 张闭卷知识卡及评分点
+- 本次跳过闭卷知识抽查，未进行评分和错题纠正，不将知识抽查计入已完成项
