@@ -636,3 +636,58 @@
 - 已完成 2026-08-10 至 2026-08-16 周总结，整理本周完成项、未完成项、三个主要问题和下周入口
 - 已建立 10 张闭卷知识卡及评分点
 - 本次跳过闭卷知识抽查，未进行评分和错题纠正，不将知识抽查计入已完成项
+## 2026-08-17
+
+### 今日完成
+
+- 明确“ProjectRequest -> ProjectProfile -> POIQuery -> POIFeatureSet -> 业务 AgentState -> AnalysisResult”字段流
+- 新建独立 `practice/site_selection` 业务包，未修改昨天的通用 LangGraph 工具状态
+- 定义 `ProjectType`、`ProjectRequest`、`CandidateParcel`、`DatasetManifest`
+- 使用枚举拒绝未知项目类型和未知数据来源
+- 校验候选地块坐标、正面积、唯一编号和带时区请求时间
+- 定义 `POIQuery`、`POIRecord`、`POISourceMeta`、`POIFeatureSet`
+- 校验 POI 查询类别、半径、条数、供应商、查询时间和来源记录数量
+- 配置商场与物流园两个 ProjectProfile，每类包含 6 组 POI 类别、半径、指标和软评分权重
+- 校验每个 Profile 至少 5 组、分组唯一且权重之和为 1
+- 定义选址业务 `AgentState`、`GISEvidence`、`POIEvidence`、`PolicyEvidence` 和 `AnalysisResult`
+- 校验请求、Profile、候选地块、证据和结果之间的交叉引用
+- 建立 FastAPI、PostGIS、Redis Compose 骨架和三个健康检查
+- 建立 Dockerfile、`.dockerignore` 与 `.env.compose.example`
+- 确认 API Key、数据库密码和 Redis 密码只从环境变量读取，示例文件无真实密钥
+- 新增 14 项数据契约测试并全部通过
+- 使用 YAML 解析器确认 Compose 包含 `api/postgis/redis` 三个服务且均有健康检查
+
+### 今日理解
+
+- 数据契约负责在数据进入节点前拒绝非法类型、缺失字段和交叉引用错误
+- Profile 是项目类型对应的查询与软评分配置，不是最终合规规则
+- POI 原始记录、来源元数据和计算指标应分层保存，避免丢失可追溯性
+- DatasetManifest 记录数据来源和版本，不应保存任何真实凭据
+- 通用工具调用 AgentState 与选址业务 AgentState 职责不同，应通过模块边界隔离
+- LLM 负责理解与解释，项目类型、半径、权重和引用一致性由枚举与 Pydantic 确定性校验
+- Compose 骨架只是运行配置，只有容器实际启动并通过健康检查后才能算运行验收
+
+### 测试情况
+
+- 新增数据契约测试：14 项通过
+- 新代码 `compileall`：通过
+- Compose YAML：成功解析，三个服务均包含健康检查
+- 原项目最近基线：53 项通过
+- 合并后的完整 67 项测试：复制到项目后待运行
+- Docker 容器：当前环境没有 Docker CLI，尚未启动验收
+
+### 当前边界
+
+- 尚未执行真实 POI 查询
+- 尚未连接 PostGIS 和 Redis
+- 尚未实现软评分计算、GIS 分析、政策 RAG 和 RuleEngine
+- 业务 AgentState 尚未接入 LangGraph
+- 商场和物流园 Profile 是学习用静态配置，尚未经过真实业务标定
+- 不得将 POI 软评分描述为法定合规结论
+
+### 下一步
+
+- 将文件复制到项目后运行完整测试，确认 67 项通过
+- 本机具备 Docker Desktop 后运行 Compose 配置和健康检查
+- 实现 `ProjectTypeRouter`、`ProfileRegistry` 和 POIQuery 构造函数
+- 再进入 CRS、投影、字段完整性和几何有效性校验
