@@ -777,3 +777,22 @@
 - 通过 `geometry_dataset_id` 和 `DatasetManifest` 加载空间数据
 - 将校验成功或失败映射到 `GISEvidence`
 - 仅允许 `EvidenceStatus.READY` 的数据进入 GIS 分析节点
+
+### 空间数据 Gateway 补充
+
+- 定义供应商无关的 `SpatialDatasetGateway.load()` 接口
+- 实现返回 GeoDataFrame 深拷贝的 `MockSpatialDatasetGateway`
+- 通过 `geometry_dataset_id` 在业务状态中匹配 `DatasetManifest`
+- 校验实际 CRS 与 Manifest 声明 CRS 一致性
+- 将缺引用、缺 Manifest、缺数据和缺目标地块映射为 `GISEvidence.MISSING`
+- 将缺 CRS、缺字段、CRS 不一致和非法几何映射为 `GISEvidence.INVALID`
+- 将通过全部验证的目标地块映射为 `GISEvidence.READY`
+- 成功证据记录数据集 ID、CRS、几何有效性和目标要素数量
+- 保持输入 AgentState 和源 GeoDataFrame 不被原地修改
+- 新增 10 项 SpatialDatasetGateway 测试，项目全量达到 108 项通过
+
+#### Gateway 当前边界
+
+- 当前只实现 Mock，尚未读取真实文件或 PostGIS
+- 尚未把 `GISEvidence.READY` 接入 GIS 分析节点
+- 尚未计算缓冲区、相交、面积和距离指标

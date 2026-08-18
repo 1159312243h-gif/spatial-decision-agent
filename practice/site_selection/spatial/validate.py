@@ -16,6 +16,7 @@ class SpatialValidationCode(StrEnum):
     MISSING_FIELDS = "missing_fields"
     MISSING_CRS = "missing_crs"
     INVALID_CRS = "invalid_crs"
+    CRS_MISMATCH = "crs_mismatch"
     CRS_NOT_PROJECTED = "crs_not_projected"
     NULL_GEOMETRY = "null_geometry"
     EMPTY_GEOMETRY = "empty_geometry"
@@ -74,6 +75,7 @@ def validate_spatial_dataset(
     *,
     required_fields: Iterable[str],
     require_projected: bool = True,
+    expected_crs: Any | None = None,
 ) -> SpatialValidationResult:
     """Validate schema, CRS, and geometry before deterministic GIS analysis."""
 
@@ -109,6 +111,17 @@ def validate_spatial_dataset(
         )
 
     crs = parse_crs(frame.crs)
+    if expected_crs is not None:
+        declared_crs = parse_crs(expected_crs)
+        if not crs.equals(declared_crs):
+            raise SpatialValidationError(
+                SpatialValidationCode.CRS_MISMATCH,
+                (
+                    "空间数据实际 CRS 与 DatasetManifest 声明不一致："
+                    f"actual={crs.to_string()}, "
+                    f"expected={declared_crs.to_string()}"
+                ),
+            )
     if require_projected and not crs.is_projected:
         raise SpatialValidationError(
             SpatialValidationCode.CRS_NOT_PROJECTED,

@@ -222,3 +222,31 @@ geometry_dataset_id
 - GeoPandas `GeoSeries.is_valid`：https://geopandas.org/en/stable/docs/reference/api/geopandas.GeoSeries.is_valid.html
 - GeoPandas `GeoSeries.is_empty`：https://geopandas.org/en/stable/docs/reference/api/geopandas.GeoSeries.is_empty.html
 - PyProj `CRS`：https://pyproj4.github.io/pyproj/stable/api/crs/crs.html
+
+## 十三、SpatialDatasetGateway 实现补充
+
+空间验证函数现已接入业务数据流：
+
+```text
+CandidateParcel.geometry_dataset_id
+  -> 在 AgentState.datasets 中查找 DatasetManifest
+  -> SpatialDatasetGateway.load(manifest)
+  -> 校验必需字段、实际 CRS、Manifest CRS 和几何
+  -> 查找目标 parcel_id
+  -> 生成 GISEvidence
+```
+
+`SpatialDatasetGateway` 是供应商无关接口。当前 `MockSpatialDatasetGateway` 只从内存加载 GeoDataFrame，并返回深拷贝，确保测试不会修改源数据。后续文件和 PostGIS 实现只需遵守相同的 `load()` 契约。
+
+状态映射规则：
+
+- 未声明 `geometry_dataset_id`：`MISSING`
+- 未找到 DatasetManifest：`MISSING`
+- Gateway 中不存在数据：`MISSING`
+- 数据集中不存在目标 `parcel_id`：`MISSING`
+- 缺 CRS、缺字段、CRS 不一致或几何非法：`INVALID`
+- 全部校验通过且存在目标地块：`READY`
+
+成功的 `GISEvidence` 会保存地块编号、数据集 ID、标准化 CRS、几何有效性和目标地块要素数量。失败原因保存在 `notes`，并带有稳定错误码。
+
+当前 Gateway 仍是 Mock：尚未读取真实文件或 PostGIS，也尚未执行缓冲区、相交和叠加分析。项目全量测试现为 `108 passed, 1 existing warning`。
