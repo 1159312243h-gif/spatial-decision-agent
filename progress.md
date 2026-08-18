@@ -748,3 +748,32 @@
 - 拦截缺 CRS、缺必需字段、空几何和无效几何数据
 - 为合法与非法空间数据编写单元测试
 - 通过验证的数据再进入 GIS 分析节点
+
+### 空间校验补充
+
+- 安装并验证 GeoPandas 1.1.4、PyProj 3.7.2 和 Shapely 2.1.2
+- 阅读 GeoPandas 与 PyProj 官方文档，确认 CRS、缺失几何、空几何和无效几何的 API 行为
+- 新建 `practice/site_selection/spatial/validate.py`
+- 使用 `CRS.from_user_input()` 统一解析 CRS，区分缺 CRS 与非法 CRS
+- 默认禁止地理坐标系直接进入米制距离和面积分析
+- 校验活动 geometry 列、业务必需字段和非空数据集
+- 分别拦截 `None` 几何、EMPTY 几何和拓扑无效几何
+- 使用结构化错误码、缺失字段和错误行号记录失败原因
+- 合法数据返回可序列化的 `SpatialValidationResult` 审计摘要
+- 新增 12 项空间数据校验测试并全部通过
+- 项目全量测试提升至 98 项通过，仍只有 1 条既有 Starlette warning
+
+#### 空间模块边界
+
+- 当前只执行验证，不自动投影或修复几何
+- 尚未加载真实空间文件或 PostGIS 图层
+- 尚未对比 DatasetManifest 声明 CRS 与实际 CRS
+- 尚未将校验结果写入 `GISEvidence` 或 LangGraph 节点
+- `requirements.txt` 已增加空间依赖，下次 Docker 运行新代码前需要重新构建 API 镜像
+
+#### 空间模块下一步
+
+- 定义 `SpatialDatasetGateway`
+- 通过 `geometry_dataset_id` 和 `DatasetManifest` 加载空间数据
+- 将校验成功或失败映射到 `GISEvidence`
+- 仅允许 `EvidenceStatus.READY` 的数据进入 GIS 分析节点
