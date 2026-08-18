@@ -10,12 +10,18 @@ from .constraint_analysis import (
     ConstraintAnalysisBlockedError,
     run_spatial_constraint_analysis,
 )
+from .file_gateway import (
+    SUPPORTED_SPATIAL_FILE_SUFFIXES,
+    FileSpatialDatasetGateway,
+)
 from .gateway import (
     MockSpatialDatasetGateway,
+    SpatialDatasetAccessError,
     SpatialDatasetGateway,
     SpatialDatasetNotFoundError,
     collect_gis_evidence,
 )
+from .postgis_gateway import PostGISSpatialDatasetGateway
 from .validate import (
     SpatialValidationCode,
     SpatialValidationError,
@@ -26,8 +32,12 @@ from .validate import (
 
 __all__ = [
     "ConstraintAnalysisBlockedError",
+    "FileSpatialDatasetGateway",
     "GISAnalysisBlockedError",
     "MockSpatialDatasetGateway",
+    "PostGISSpatialDatasetGateway",
+    "SUPPORTED_SPATIAL_FILE_SUFFIXES",
+    "SpatialDatasetAccessError",
     "SpatialDatasetGateway",
     "SpatialDatasetNotFoundError",
     "SpatialMetrics",

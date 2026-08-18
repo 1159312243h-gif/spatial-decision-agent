@@ -971,3 +971,59 @@
 - 将选址业务工作流接入应用服务/API 边界
 - 定义请求响应 DTO、依赖提供器和业务错误映射
 - 在真实配置完成审核前，不生成自动推荐或合规通过结论
+
+### 选址 API、前置检查、结构化 Agent 与 Fixture POI
+
+- 新增 `POST /site-selection/analyses`，通过 DTO 和应用服务调用既有确定性选址工作流
+- 新增 `SiteSelectionRuntimeProvider`，隔离数据清单、网关、评分、约束和规则配置
+- 默认未配置运行时安全返回 `503 runtime_unavailable`，不使用合成配置生成业务结果
+- 输入错误返回 `422`，工作流业务阻断返回 `409`，未知服务异常清理后返回 `500`
+- 成功响应要求全部候选地块结果和请求级候选对比报告完整
+- 新增 `POST /site-selection/preflight`，供不完整项目草稿执行三态检查
+- 新增 `SiteSelectionDraft` 和 `PreflightDecision`
+- 前置检查支持 `ready / needs_input / unsupported` 三种结构化决策
+- 缺少项目类型、候选地块、建设面积、几何数据引用或数据清单时返回具体字段，不继续猜测
+- 商场和物流园继续复用既有 `ProfileRegistry` 路由，未知类型停止分析
+- 新增 `OrchestratorAgent`、`SpatialAgent`、`PolicyAgent`、`ReviewAgent` 结构化输入输出边界
+- 四个 Agent 复用已有 GIS、规则、结果组装和候选对比模块，不重复实现业务算法
+- SpatialAgent 在 GIS 强制证据未就绪时阻断，PolicyAgent 要求显式版本化规则
+- 新增 `POISourceAdapter` 协议和 JSON 驱动的 `FixturePOIAdapter`
+- Fixture 包含 32 条合成 POI，覆盖商场和物流园 Profile 的全部类别
+- Fixture 支持类别、Haversine 半径、数量限制和确定性顺序过滤
+- POI 来源新增数据集版本和更新时间血缘，并校验时间包含时区
+- 查询、底层数据集和返回记录使用防御性复制
+- 新增只读 `SiteSelectionRuntimeRegistry`，按项目类型解析审核后的运行配置
+- 注册表拒绝项目类型错配，未配置类型继续返回 `runtime_unavailable`
+- FastAPI 新增 `create_app(runtime_provider=...)`，支持启动时显式注入注册表
+- 默认应用仍使用未配置提供器，不隐式启用任何演示业务值
+- 新增显式 Fixture HTTP 端到端测试，贯通 POI、GIS、规则、结果和候选对比
+- Fixture 评分与规则只存在测试代码并带 `fixture-test` 标识，不代表真实业务配置
+- 测试注册表只配置商场时，物流园分析继续返回 `503`
+- 新增受根目录约束的 `FileSpatialDatasetGateway`
+- 文件 Gateway 支持 GeoJSON、JSON、GeoPackage 和 Shapefile
+- 文件 Manifest 必须使用相对路径，拒绝绝对路径、目录穿越和根目录外目标
+- 文件缺失映射为 `MISSING`，来源、路径、格式或读取错误映射为 `INVALID`
+- 读取错误只记录数据集编号和异常类型，不泄露文件内容或绝对根目录
+- 每次加载返回新的 GeoDataFrame，不共享调用方修改
+- 新增连接对象注入的 `PostGISSpatialDatasetGateway`
+- PostGIS Manifest 只允许 `table` 或 `schema.table`，拒绝任意 SQL 片段
+- schema 使用显式白名单，schema、table 和几何列使用严格标识符校验
+- 数据库读取异常只保留数据集编号和异常类型，不泄露连接或服务端消息
+- 依赖清单新增 `sqlalchemy` 和 `psycopg[binary]`，与 Compose 数据库 URL 对齐
+- 已安装 `SQLAlchemy 2.0.52` 和 `psycopg 3.3.4`
+- 已对 healthy 状态的 Compose PostGIS 执行真实实连冒烟测试
+- 冒烟测试使用事务级临时空间表，成功验证 1 条 EPSG:32651 Polygon 数据并在提交后自动清理
+- 真实 PostGIS 冒烟结果：`PostGIS smoke OK: rows=1, crs=EPSG:32651, geometry=Polygon`
+- 本阶段未接入高德或 OSM，未新增真实政策规则、业务评分阈值或自动推荐结论
+- 新增前置检查、Agent、Fixture、应用服务和 API 测试
+- 定向测试 `38 passed, 1 existing warning`
+- Fixture HTTP 端到端测试 `2 passed, 1 existing warning`
+- 文件型空间 Gateway 定向组合 `45 passed`
+- PostGIS 与其他空间 Gateway 定向组合 `61 passed`
+- 项目全量回归 `269 passed, 1 existing warning`
+
+#### 下一步
+
+- 为正式 PostGIS 数据集定义受审核的表清单、schema 白名单和只读连接权限
+- 在密钥管理和网络方案明确后接入真实 POI Adapter
+- 明确生产数据、评分配置和政策规则的来源、版本、审核与发布流程

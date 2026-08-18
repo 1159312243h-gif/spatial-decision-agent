@@ -12,7 +12,11 @@ from ..constraints import (
 from ..domain import DatasetManifest
 from ..evidence import AgentState, EvidenceStatus, GISEvidence
 from .analysis import GISAnalysisBlockedError, calculate_spatial_metrics
-from .gateway import SpatialDatasetGateway, SpatialDatasetNotFoundError
+from .gateway import (
+    SpatialDatasetAccessError,
+    SpatialDatasetGateway,
+    SpatialDatasetNotFoundError,
+)
 from .validate import SpatialValidationError, validate_spatial_dataset
 
 
@@ -198,6 +202,7 @@ def _load_valid_frame(
             expected_crs=manifest.crs,
         )
     except (
+        SpatialDatasetAccessError,
         SpatialDatasetNotFoundError,
         SpatialValidationError,
         GISAnalysisBlockedError,

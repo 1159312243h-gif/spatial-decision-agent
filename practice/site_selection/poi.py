@@ -66,15 +66,22 @@ class POISourceMeta(BaseModel):
 
     provider: POIProvider
     dataset_id: NonEmptyString
+    dataset_version: NonEmptyString | None = None
+    dataset_updated_at: datetime | None = None
     queried_at: datetime
     crs: NonEmptyString = "EPSG:4326"
     record_count: int = Field(ge=0)
 
-    @field_validator("queried_at")
+    @field_validator("dataset_updated_at", "queried_at")
     @classmethod
-    def queried_at_has_timezone(cls, value: datetime) -> datetime:
+    def timestamps_have_timezone(
+        cls,
+        value: datetime | None,
+    ) -> datetime | None:
+        if value is None:
+            return value
         if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("POI 查询时间必须包含时区")
+            raise ValueError("POI 来源时间必须包含时区")
         return value
 
 

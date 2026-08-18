@@ -18,6 +18,10 @@ class SpatialDatasetNotFoundError(LookupError):
     """Raised when a registered dataset cannot be loaded by the gateway."""
 
 
+class SpatialDatasetAccessError(RuntimeError):
+    """Raised when a manifested dataset cannot be accessed safely."""
+
+
 class SpatialDatasetGateway(Protocol):
     """Provider-neutral boundary for loading one manifested spatial dataset."""
 
@@ -104,6 +108,13 @@ def _collect_parcel_evidence(
         return GISEvidence(
             parcel_id=parcel_id,
             status=EvidenceStatus.MISSING,
+            dataset_ids=[dataset_id],
+            notes=[str(exc)],
+        )
+    except SpatialDatasetAccessError as exc:
+        return GISEvidence(
+            parcel_id=parcel_id,
+            status=EvidenceStatus.INVALID,
             dataset_ids=[dataset_id],
             notes=[str(exc)],
         )

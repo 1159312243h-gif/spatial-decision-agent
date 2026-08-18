@@ -7,7 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..domain import DatasetManifest
 from ..evidence import AgentState, EvidenceStatus, GISEvidence
-from .gateway import SpatialDatasetGateway, SpatialDatasetNotFoundError
+from .gateway import (
+    SpatialDatasetAccessError,
+    SpatialDatasetGateway,
+    SpatialDatasetNotFoundError,
+)
 from .validate import SpatialValidationError, validate_spatial_dataset
 
 
@@ -140,7 +144,11 @@ def _analyze_parcel(
             require_projected=True,
             expected_crs=manifest.crs,
         )
-    except (SpatialDatasetNotFoundError, SpatialValidationError) as exc:
+    except (
+        SpatialDatasetAccessError,
+        SpatialDatasetNotFoundError,
+        SpatialValidationError,
+    ) as exc:
         raise GISAnalysisBlockedError(
             f"READY 证据对应的数据已不可用：{dataset_id}"
         ) from exc
