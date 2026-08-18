@@ -250,3 +250,22 @@ CandidateParcel.geometry_dataset_id
 成功的 `GISEvidence` 会保存地块编号、数据集 ID、标准化 CRS、几何有效性和目标地块要素数量。失败原因保存在 `notes`，并带有稳定错误码。
 
 当前 Gateway 仍是 Mock：尚未读取真实文件或 PostGIS，也尚未执行缓冲区、相交和叠加分析。项目全量测试现为 `108 passed, 1 existing warning`。
+
+## 十四、确定性 GIS 分析补充
+
+`calculate_spatial_metrics()` 已实现可复用的确定性空间指标：
+
+- 地块面积，单位公顷
+- 地块周长，单位米
+- 指定缓冲距离
+- 缓冲后总面积，单位公顷
+- 与上下文图层相交的要素数量
+- 到上下文图层最近要素的距离
+
+所有距离和面积计算都要求投影坐标系。地块目标只接受 `Polygon` 或 `MultiPolygon`，避免对点、线计算无业务意义的地块面积。
+
+`run_gis_analysis()` 是状态层入口。它只接受 `GISEvidence.READY`：证据缺失、证据非法、Manifest 缺失、Gateway 数据消失或再次校验失败都会抛出 `GISAnalysisBlockedError`，不会继续生成指标。
+
+状态入口当前只回写地块自身的面积、周长和缓冲区指标。相交数量与最近距离已经由纯函数实现并测试，但需要先建立约束图层的 Manifest 和类型契约，才能接入业务状态，避免把任意图层误当作法定约束。
+
+本阶段新增 11 项测试，项目全量达到 `119 passed, 1 existing warning`。

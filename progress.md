@@ -796,3 +796,24 @@
 - 当前只实现 Mock，尚未读取真实文件或 PostGIS
 - 尚未把 `GISEvidence.READY` 接入 GIS 分析节点
 - 尚未计算缓冲区、相交、面积和距离指标
+
+### 确定性 GIS 分析补充
+
+- 实现 `SpatialMetrics` 结构化指标模型
+- 实现地块面积、公顷换算和投影坐标系周长计算
+- 实现指定距离缓冲区及缓冲后总面积计算
+- 实现与上下文图层的相交要素计数和最近距离计算
+- 强制地块目标只能是 Polygon 或 MultiPolygon
+- 非正缓冲距离会在执行前被拒绝
+- 实现 `run_gis_analysis()` 状态入口，仅接受 `GISEvidence.READY`
+- `MISSING/INVALID` 证据会抛出 `GISAnalysisBlockedError` 并阻断分析
+- READY 后数据消失或再次校验失败同样阻断，不使用过期证据继续计算
+- 指标写入新的 `GISEvidence`，不原地修改 AgentState 或源 GeoDataFrame
+- 新增 11 项确定性 GIS 分析测试，项目全量达到 119 项通过
+
+#### 分析层当前边界
+
+- 状态节点目前只回写地块自身面积、周长和缓冲区指标
+- 相交和最近距离纯函数已完成，但尚未建立约束图层 Manifest 契约
+- 尚未实现规划、生态、耕地等具体规则和 RuleEngine
+- 当前指标属于空间事实，不直接等于合规结论
