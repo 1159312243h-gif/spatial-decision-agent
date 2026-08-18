@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .constraints import ConstraintObservation
 from .domain import DatasetManifest, NonEmptyString, ProjectRequest, ProjectType
 from .poi import POIFeatureSet, POIQuery
+from .poi_scoring import POIScoreReport
 from .profiles import ProjectProfile
 from .rules import PolicyFinding
 
@@ -57,7 +58,25 @@ class POIEvidence(BaseModel):
     status: EvidenceStatus
     feature_sets: list[POIFeatureSet] = Field(default_factory=list)
     soft_score: float | None = Field(default=None, ge=0, le=100)
+    score_report: POIScoreReport | None = None
     notes: list[NonEmptyString] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def score_lineage_is_consistent(self) -> POIEvidence:
+        if any(
+            feature_set.query.parcel_id != self.parcel_id
+            for feature_set in self.feature_sets
+        ):
+            raise ValueError("POI FeatureSet 必须属于同一候选地块")
+        if self.score_report is None:
+            return self
+        if self.score_report.parcel_id != self.parcel_id:
+            raise ValueError("POI 评分报告必须属于同一候选地块")
+        if self.soft_score is None:
+            raise ValueError("存在 POI 评分报告时 soft_score 不能为空")
+        if abs(self.soft_score - self.score_report.total_score) > 1e-7:
+            raise ValueError("POI soft_score 必须等于评分报告总分")
+        return self
 
 
 class PolicyEvidence(BaseModel):

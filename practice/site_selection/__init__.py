@@ -56,6 +56,7 @@ from .poi_scoring import (
     normalize_metric_value,
     score_poi_feature_sets,
 )
+from .poi_scoring_service import score_poi_state
 from .profiles import (
     PROJECT_PROFILES,
     POICategoryConfig,
@@ -143,4 +144,5 @@ __all__ = [
     "route_after_step",
     "run_site_selection_workflow",
     "score_poi_feature_sets",
+    "score_poi_state",
 ]

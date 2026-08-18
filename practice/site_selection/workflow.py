@@ -10,6 +10,8 @@ from .constraints import ConstraintLayerSpec
 from .domain import DatasetManifest, ProjectRequest
 from .evidence import AgentState, AnalysisStatus, EvidenceStatus
 from .intake import ProjectIntakeSkill
+from .poi_scoring import POIScoringConfig, POIScoringError
+from .poi_scoring_service import score_poi_state
 from .poi_service import POIGateway, execute_poi_queries
 from .results import ResultAssemblyBlockedError, assemble_analysis_results
 from .rule_engine import (
@@ -38,6 +40,7 @@ class SiteSelectionWorkflowDependencies:
     """Explicit runtime dependencies for the deterministic business graph."""
 
     poi_gateway: POIGateway
+    poi_scoring_config: POIScoringConfig
     spatial_gateway: SpatialDatasetGateway
     constraint_specs: Sequence[ConstraintLayerSpec]
     rules: Sequence[RuleDefinition]
@@ -73,6 +76,16 @@ def build_site_selection_graph(
             lambda state: execute_poi_queries(
                 state,
                 dependencies.poi_gateway,
+            ),
+        ),
+    )
+    builder.add_node(
+        "poi_scoring",
+        _safe_node(
+            "poi_scoring",
+            lambda state: score_poi_state(
+                state,
+                dependencies.poi_scoring_config,
             ),
         ),
     )
@@ -125,7 +138,8 @@ def build_site_selection_graph(
     builder.add_node("failed", _failed_node)
 
     builder.add_edge(START, "poi")
-    _add_guarded_edge(builder, "poi", "gis_collection")
+    _add_guarded_edge(builder, "poi", "poi_scoring")
+    _add_guarded_edge(builder, "poi_scoring", "gis_collection")
     _add_guarded_edge(builder, "gis_collection", "gis_metrics")
     _add_guarded_edge(builder, "gis_metrics", "spatial_constraints")
     _add_guarded_edge(builder, "spatial_constraints", "policy_rules")
@@ -214,6 +228,7 @@ def _collect_ready_gis_evidence(
 _EXPECTED_ERRORS = (
     ConstraintAnalysisBlockedError,
     GISAnalysisBlockedError,
+    POIScoringError,
     ResultAssemblyBlockedError,
     RuleConfigurationError,
     RuleEvaluationBlockedError,

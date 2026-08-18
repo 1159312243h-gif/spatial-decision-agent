@@ -13,17 +13,24 @@ from practice.site_selection import (
     DatasetManifest,
     DatasetSource,
     EvidenceStatus,
+    MissingMetricPolicy,
     MockPOIGateway,
+    POIGroupScoringConfig,
+    POIMetric,
+    POIMetricScoringRule,
     POIRecord,
+    POIScoringConfig,
     PolicyReference,
     ProjectRequest,
     ProjectType,
     ResultAssemblyBlockedError,
     RuleDefinition,
     RuleOutcome,
+    ScoreDirection,
     SiteSelectionWorkflowDependencies,
     SpatialConstraintRelation,
     assemble_analysis_results,
+    get_project_profile,
     run_site_selection_workflow,
 )
 from practice.site_selection.spatial import MockSpatialDatasetGateway
@@ -152,15 +159,54 @@ def poi_gateway() -> MockPOIGateway:
     )
 
 
+def scoring_config(
+    *,
+    missing_policy: MissingMetricPolicy = MissingMetricPolicy.ZERO,
+) -> POIScoringConfig:
+    groups = []
+    profile = get_project_profile(ProjectType.SHOPPING_MALL)
+    for group in profile.poi_groups:
+        metric_weight = 1 / len(group.metrics)
+        groups.append(
+            POIGroupScoringConfig(
+                group_key=group.group_key,
+                metric_rules=[
+                    POIMetricScoringRule(
+                        metric=metric,
+                        direction=(
+                            ScoreDirection.LOWER_IS_BETTER
+                            if metric
+                            in {
+                                POIMetric.NEAREST_DISTANCE_M,
+                                POIMetric.AVERAGE_DISTANCE_M,
+                            }
+                            else ScoreDirection.HIGHER_IS_BETTER
+                        ),
+                        lower_bound=0,
+                        upper_bound=100,
+                        weight=metric_weight,
+                        missing_policy=missing_policy,
+                    )
+                    for metric in group.metrics
+                ],
+            )
+        )
+    return POIScoringConfig(
+        project_type=ProjectType.SHOPPING_MALL,
+        version="demo-1.0",
+        groups=groups,
+    )
 def dependencies(
     *,
     target: gpd.GeoDataFrame | None = None,
     constraint: gpd.GeoDataFrame | None = None,
     active_rule: RuleDefinition | None = None,
     active_poi_gateway=None,
+    active_scoring_config: POIScoringConfig | None = None,
 ) -> SiteSelectionWorkflowDependencies:
     return SiteSelectionWorkflowDependencies(
         poi_gateway=active_poi_gateway or poi_gateway(),
+        poi_scoring_config=active_scoring_config or scoring_config(),
         spatial_gateway=MockSpatialDatasetGateway(
             {
                 PARCEL_DATASET_ID: (
@@ -197,9 +243,14 @@ def test_happy_path_builds_auditable_parcel_result() -> None:
     assert len(parcel_result.policy_evidence.rule_findings) == 1
     assert parcel_result.policy_evidence.rule_findings[0].rule_version == "1.0"
     assert parcel_result.poi_evidence.status is EvidenceStatus.READY
-    assert parcel_result.overall_soft_score is None
+    assert parcel_result.overall_soft_score is not None
+    assert parcel_result.poi_evidence.score_report is not None
+    assert parcel_result.poi_evidence.score_report.scoring_version == "demo-1.0"
+    assert parcel_result.overall_soft_score == pytest.approx(
+        parcel_result.poi_evidence.score_report.total_score
+    )
     assert parcel_result.conclusion is None
-    assert any("未生成软评分" in item for item in parcel_result.warnings)
+    assert not any("未生成软评分" in item for item in parcel_result.warnings)
     assert initial_request.request_id == "REQ-workflow"
 
 
@@ -228,6 +279,25 @@ def test_invalid_gis_routes_to_failed_state() -> None:
     assert result.results == []
     assert "gis_collection" in result.errors[0]
     assert "missing_crs" in result.errors[0]
+    assert result.policy_evidence == []
+
+
+def test_missing_poi_metric_routes_to_failed_state_before_gis() -> None:
+    result = run_site_selection_workflow(
+        request(),
+        manifests(),
+        dependencies(
+            active_scoring_config=scoring_config(
+                missing_policy=MissingMetricPolicy.BLOCK,
+            )
+        ),
+    )
+
+    assert result.status is AnalysisStatus.FAILED
+    assert result.results == []
+    assert "poi_scoring" in result.errors[0]
+    assert "缺少指标" in result.errors[0]
+    assert result.gis_evidence == []
     assert result.policy_evidence == []
 
 
@@ -264,6 +334,7 @@ def test_dependencies_require_constraints() -> None:
     with pytest.raises(ValueError, match="空间约束"):
         SiteSelectionWorkflowDependencies(
             poi_gateway=poi_gateway(),
+            poi_scoring_config=scoring_config(),
             spatial_gateway=MockSpatialDatasetGateway(),
             constraint_specs=[],
             rules=[rule()],
@@ -274,6 +345,7 @@ def test_dependencies_require_rules() -> None:
     with pytest.raises(ValueError, match="版本化规则"):
         SiteSelectionWorkflowDependencies(
             poi_gateway=poi_gateway(),
+            poi_scoring_config=scoring_config(),
             spatial_gateway=MockSpatialDatasetGateway(),
             constraint_specs=[constraint_spec()],
             rules=[],
@@ -284,6 +356,7 @@ def test_dependencies_require_positive_buffer() -> None:
     with pytest.raises(ValueError, match="缓冲距离"):
         SiteSelectionWorkflowDependencies(
             poi_gateway=poi_gateway(),
+            poi_scoring_config=scoring_config(),
             spatial_gateway=MockSpatialDatasetGateway(),
             constraint_specs=[constraint_spec()],
             rules=[rule()],
@@ -314,6 +387,7 @@ def test_result_assembly_preserves_explicit_poi_soft_score() -> None:
         dependencies(),
     )
     scored_data = completed.model_dump()
+    scored_data["poi_evidence"][0]["score_report"] = None
     scored_data["poi_evidence"][0]["soft_score"] = 82.5
     scored_data["results"] = []
     scored_data["status"] = AnalysisStatus.ANALYZING

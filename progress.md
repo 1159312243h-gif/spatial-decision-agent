@@ -919,3 +919,28 @@
 - 设计商场与物流园评分配置草案及阈值校准依据
 - 经确认后将 `POIScoreReport` 接入 `POIEvidence` 和业务 LangGraph
 - POI 软评分始终不得抵消 `PolicyEvidence` 的硬约束命中
+
+### POI 软评分状态服务与工作流接入
+
+- 扩展 `POIEvidence`，新增完整的 `POIScoreReport` 评分血缘
+- 校验评分报告地块、`soft_score` 与报告总分的一致性
+- 新增 `score_poi_state()`，对所有候选地块执行确定性 POI 评分
+- 要求每个候选地块存在唯一且 `READY` 的 POI 证据
+- 评分服务返回新的 `AgentState`，不修改输入状态
+- `SiteSelectionWorkflowDependencies` 新增必填版本化评分配置
+- LangGraph 增加 `poi_scoring` 节点，流程更新为 `poi -> poi_scoring -> gis_collection`
+- 将 `POIScoringError` 纳入已知业务错误并统一路由到失败状态
+- 评分失败后不再执行 GIS、空间约束、政策规则和结果组装节点
+- 正常结果将评分总分写入 `AnalysisResult.overall_soft_score`
+- 评分报告保留版本、分组、指标原始值、方向、权重和数据来源
+- 工作流测试继续验证软评分不会删除或抵消硬约束政策证据
+- 当前 `demo-1.0` 和 `0-100` 阈值仅为合成测试配置，不代表真实业务标准
+- 新增 7 项状态评分服务测试，并扩展端到端工作流测试
+- 定向测试 `38 passed`
+- 项目全量回归 `186 passed, 1 existing warning`
+
+#### 下一步
+
+- 为商场与物流园分别设计可审查的评分配置文件
+- 记录阈值数据来源、适用范围、校准依据和发布版本
+- 增加多候选地块排序，同时保持软评分与政策硬约束严格分离
