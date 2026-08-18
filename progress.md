@@ -881,3 +881,20 @@
 - 定义商场与物流园分别适用的 POI 指标方向、归一化区间和评分版本
 - 生成可解释的分组得分与 `POIEvidence.soft_score`
 - 评分不得覆盖或抵消 `PolicyEvidence` 中的硬约束命中
+
+### POI 查询分组契约
+
+- 将 `POIQuery.group_key` 定义为必填非空字段
+- `build_poi_queries()` 直接从 `ProjectProfile.poi_groups` 写入分组标识
+- 后续评分逻辑可以通过结构化字段匹配分组，不再解析 `query_id`
+- 商场与物流园生成的查询分组顺序分别与对应 Profile 保持一致
+- 多候选地块场景下，每个“地块 + Profile 分组”组合唯一且完整
+- 手工构造查询时缺少 `group_key` 会被 Pydantic 在进入 Gateway 前拒绝
+- 更新 POI 契约、Intake、Gateway 及端到端工作流相关测试
+- 定向组合测试 `44 passed`
+- 项目全量回归 `158 passed, 1 existing warning`
+
+#### 下一步
+
+- 定义评分方向、归一化上下界、指标权重和缺失指标策略
+- 本阶段尚未计算或写入任何 POI 软评分

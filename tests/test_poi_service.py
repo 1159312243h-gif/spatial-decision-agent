@@ -25,6 +25,7 @@ def query(*, radius_m: int = 1_500, limit: int = 100) -> POIQuery:
     return POIQuery(
         query_id="REQ-001:A01:public_transit",
         parcel_id="A01",
+        group_key="public_transit",
         longitude=121.47,
         latitude=31.23,
         categories=["地铁站", "公交站"],

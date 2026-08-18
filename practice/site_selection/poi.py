@@ -30,6 +30,7 @@ class POIQuery(BaseModel):
 
     query_id: NonEmptyString
     parcel_id: NonEmptyString
+    group_key: NonEmptyString
     longitude: float = Field(ge=-180, le=180)
     latitude: float = Field(ge=-90, le=90)
     categories: Annotated[list[NonEmptyString], Field(min_length=1)]

@@ -106,6 +106,7 @@ def test_illegal_poi_radius_is_rejected() -> None:
         POIQuery(
             query_id="Q-001",
             parcel_id="A01",
+            group_key="public_transit",
             longitude=121.47,
             latitude=31.23,
             categories=["地铁站"],
@@ -118,9 +119,22 @@ def test_empty_poi_categories_are_rejected() -> None:
         POIQuery(
             query_id="Q-002",
             parcel_id="A01",
+            group_key="public_transit",
             longitude=121.47,
             latitude=31.23,
             categories=[],
+            radius_m=1_000,
+        )
+
+
+def test_missing_poi_group_key_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="group_key"):
+        POIQuery(
+            query_id="Q-missing-group",
+            parcel_id="A01",
+            longitude=121.47,
+            latitude=31.23,
+            categories=["地铁站"],
             radius_m=1_000,
         )
 
@@ -170,6 +184,7 @@ def test_poi_feature_count_must_match_source_metadata() -> None:
     query = POIQuery(
         query_id="Q-003",
         parcel_id="A01",
+        group_key="public_transit",
         longitude=121.47,
         latitude=31.23,
         categories=["地铁站"],
@@ -208,6 +223,7 @@ def test_agent_state_rejects_unknown_parcel_reference() -> None:
     unknown_query = POIQuery(
         query_id="Q-unknown-parcel",
         parcel_id="B99",
+        group_key="public_transit",
         longitude=121.47,
         latitude=31.23,
         categories=["地铁站"],

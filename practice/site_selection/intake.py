@@ -71,6 +71,7 @@ def build_poi_queries(
                 f"{request.request_id}:{parcel.parcel_id}:{group.group_key}"
             ),
             parcel_id=parcel.parcel_id,
+            group_key=group.group_key,
             longitude=parcel.longitude,
             latitude=parcel.latitude,
             categories=list(group.categories),

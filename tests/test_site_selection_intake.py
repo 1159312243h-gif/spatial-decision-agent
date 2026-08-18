@@ -81,6 +81,9 @@ def test_queries_follow_shopping_mall_profile() -> None:
     queries = build_poi_queries(request, profile)
 
     assert len(queries) == len(profile.poi_groups)
+    assert [query.group_key for query in queries] == [
+        group.group_key for group in profile.poi_groups
+    ]
     assert queries[0].categories == ["地铁站", "公交站"]
     assert queries[0].radius_m == 1_500
 
@@ -92,6 +95,9 @@ def test_queries_follow_logistics_park_profile() -> None:
     queries = build_poi_queries(request, profile)
 
     assert len(queries) == len(profile.poi_groups)
+    assert [query.group_key for query in queries] == [
+        group.group_key for group in profile.poi_groups
+    ]
     assert queries[0].categories == ["高速收费站", "高速出入口"]
     assert queries[0].radius_m == 15_000
 
@@ -108,6 +114,14 @@ def test_each_parcel_gets_every_profile_query_group() -> None:
     assert len(queries) == 2 * len(profile.poi_groups)
     assert len({query.query_id for query in queries}) == len(queries)
     assert {query.parcel_id for query in queries} == {"A01", "B01"}
+    assert {
+        (query.parcel_id, query.group_key)
+        for query in queries
+    } == {
+        (parcel_id, group.group_key)
+        for parcel_id in ("A01", "B01")
+        for group in profile.poi_groups
+    }
 
 
 def test_query_builder_rejects_a_mismatched_profile() -> None:
