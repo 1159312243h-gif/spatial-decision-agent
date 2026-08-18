@@ -898,3 +898,24 @@
 
 - 定义评分方向、归一化上下界、指标权重和缺失指标策略
 - 本阶段尚未计算或写入任何 POI 软评分
+
+### 版本化 POI 软评分契约
+
+- 新增 `ScoreDirection`，显式区分越大越好和越小越好
+- 新增 `MissingMetricPolicy`，仅支持默认阻断和显式零分
+- 新增 `POIMetricScoringRule`，配置归一化上下界、方向、权重和缺失策略
+- 新增 `POIGroupScoringConfig` 与 `POIScoringConfig`，记录项目类型和评分版本
+- 组内指标权重必须合计为 1，重复指标和重复分组会被拒绝
+- 实现 0-100 线性归一化与边界截断，拒绝 `NaN` 和无穷值
+- 评分配置、POI 数据分组及指标必须与 `ProjectProfile` 完全一致
+- 新增 `POIMetricScore`、`POIGroupScore` 和 `POIScoreReport`，保留原始值、权重、版本与数据来源
+- 实现单候选地块纯函数 `score_poi_feature_sets()`
+- 当前只使用合成阈值验证机制，尚未声明真实商场或物流园评分标准
+- 新增 20 项评分契约测试
+- 项目全量回归 `178 passed, 1 existing warning`
+
+#### 下一步
+
+- 设计商场与物流园评分配置草案及阈值校准依据
+- 经确认后将 `POIScoreReport` 接入 `POIEvidence` 和业务 LangGraph
+- POI 软评分始终不得抵消 `PolicyEvidence` 的硬约束命中
