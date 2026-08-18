@@ -860,3 +860,24 @@
 - 搭建业务 LangGraph，将 Intake、POI、GIS 校验、GIS 分析、空间约束和 RuleEngine 串成端到端最小图
 - 将硬约束政策证据与 POI 软评分分离写入 `AnalysisResult`
 - 真实法规规则录入前建立专业复核、版本发布和历史追溯机制
+
+### 端到端选址业务 LangGraph
+
+- 新增 `SiteSelectionWorkflowDependencies`，显式注入 POI Gateway、空间 Gateway、约束配置、版本化规则和缓冲距离
+- 搭建 `POI -> GIS 校验 -> GIS 指标 -> 空间约束 -> RuleEngine -> AnalysisResult` 确定性 DAG
+- 每个业务节点复用现有模块，不在工作流中重复实现 POI、GIS 或规则逻辑
+- 为每个业务节点增加条件边，失败状态统一路由到 `failed -> END`
+- 增加 GIS 强制证据门，任一候选地块为 `MISSING/INVALID` 时不进入分析节点
+- 已知业务阻断保留可操作说明，未知异常只记录类型，避免敏感原始消息进入状态
+- 新增 `assemble_analysis_results()`，要求 GIS、POI 和政策三类证据全部 READY
+- GIS 硬事实、POI 软评分和政策规则证据在 `AnalysisResult` 中保持分离
+- 当前缺少 POI 归一化评分规则时不伪造分数，写入明确 warning
+- `COMPLETED` 仅表示图执行完成，不表示项目合规；当前 `conclusion` 保持为空
+- 新增 10 项工作流与结果汇总测试；组合测试 `38 passed`
+- 项目全量回归 `157 passed, 1 existing warning`
+
+#### 下一步
+
+- 定义商场与物流园分别适用的 POI 指标方向、归一化区间和评分版本
+- 生成可解释的分组得分与 `POIEvidence.soft_score`
+- 评分不得覆盖或抵消 `PolicyEvidence` 中的硬约束命中

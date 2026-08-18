@@ -49,6 +49,7 @@ from .profiles import (
     ProjectProfile,
     get_project_profile,
 )
+from .results import ResultAssemblyBlockedError, assemble_analysis_results
 from .rule_engine import (
     RuleConfigurationError,
     RuleEvaluationBlockedError,
@@ -59,6 +60,13 @@ from .rules import (
     PolicyReference,
     RuleDefinition,
     RuleOutcome,
+)
+from .workflow import (
+    SiteSelectionWorkflowDependencies,
+    WorkflowEvidenceBlockedError,
+    build_site_selection_graph,
+    route_after_step,
+    run_site_selection_workflow,
 )
 
 __all__ = [
@@ -93,15 +101,22 @@ __all__ = [
     "ProjectRequest",
     "ProjectType",
     "ProjectTypeRouter",
+    "ResultAssemblyBlockedError",
     "RuleConfigurationError",
     "RuleDefinition",
     "RuleEvaluationBlockedError",
     "RuleOutcome",
+    "SiteSelectionWorkflowDependencies",
     "SpatialConstraintRelation",
     "UnsupportedProjectTypeError",
+    "WorkflowEvidenceBlockedError",
+    "assemble_analysis_results",
     "build_poi_queries",
+    "build_site_selection_graph",
     "calculate_poi_metrics",
     "evaluate_policy_rules",
     "execute_poi_queries",
     "get_project_profile",
+    "route_after_step",
+    "run_site_selection_workflow",
 ]
