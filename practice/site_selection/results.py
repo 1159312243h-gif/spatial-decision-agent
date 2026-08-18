@@ -38,6 +38,7 @@ def assemble_analysis_results(state: AgentState) -> AgentState:
 
     state_data = state.model_dump()
     state_data["results"] = results
+    state_data["comparison_report"] = None
     state_data["status"] = AnalysisStatus.COMPLETED
     return AgentState.model_validate(state_data)
 

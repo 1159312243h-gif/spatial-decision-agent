@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -9,7 +10,7 @@ from .domain import DatasetManifest, NonEmptyString, ProjectRequest, ProjectType
 from .poi import POIFeatureSet, POIQuery
 from .poi_scoring import POIScoreReport
 from .profiles import ProjectProfile
-from .rules import PolicyFinding
+from .rules import PolicyFinding, RuleOutcome
 
 
 class EvidenceStatus(StrEnum):
@@ -140,6 +141,75 @@ class AnalysisResult(BaseModel):
         }
         if len(parcel_ids) != 1:
             raise ValueError("分析结果中的证据必须属于同一候选地块")
+        evidence_score = self.poi_evidence.soft_score
+        if (self.overall_soft_score is None) != (evidence_score is None):
+            raise ValueError("分析结果软评分必须与 POI 证据软评分一致")
+        if (
+            self.overall_soft_score is not None
+            and evidence_score is not None
+            and abs(self.overall_soft_score - evidence_score) > 1e-7
+        ):
+            raise ValueError("分析结果软评分必须与 POI 证据软评分一致")
+        return self
+
+
+class CandidateComparisonItem(BaseModel):
+    """One candidate's position in a POI soft-score-only comparison."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    parcel_id: NonEmptyString
+    soft_rank: int = Field(ge=1)
+    soft_score: float = Field(ge=0, le=100)
+    is_tied: bool = False
+    policy_outcomes: list[RuleOutcome] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def policy_outcomes_are_unique(self) -> CandidateComparisonItem:
+        if len(self.policy_outcomes) != len(set(self.policy_outcomes)):
+            raise ValueError("候选地块对比中的政策结果等级不能重复")
+        return self
+
+
+class CandidateComparisonReport(BaseModel):
+    """Auditable ranking based only on versioned POI soft scores."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    request_id: NonEmptyString
+    project_type: ProjectType
+    scoring_version: NonEmptyString
+    ranking_basis: Literal["poi_soft_score_desc"] = "poi_soft_score_desc"
+    candidates: list[CandidateComparisonItem] = Field(min_length=1)
+    notes: list[NonEmptyString] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def ranking_is_consistent(self) -> CandidateComparisonReport:
+        parcel_ids = [item.parcel_id for item in self.candidates]
+        if len(parcel_ids) != len(set(parcel_ids)):
+            raise ValueError("候选地块对比结果不能包含重复地块")
+
+        for index, item in enumerate(self.candidates):
+            tied_count = sum(
+                item.soft_score == other.soft_score
+                for other in self.candidates
+            )
+            if item.is_tied != (tied_count > 1):
+                raise ValueError("候选地块并列标记必须与软评分一致")
+
+            expected_rank = 1
+            if index > 0:
+                previous = self.candidates[index - 1]
+                if item.soft_score > previous.soft_score:
+                    raise ValueError("候选地块必须按软评分降序排列")
+                if item.soft_score == previous.soft_score:
+                    expected_rank = previous.soft_rank
+                    if item.parcel_id < previous.parcel_id:
+                        raise ValueError("同分候选地块必须按 parcel_id 稳定排序")
+                else:
+                    expected_rank = index + 1
+            if item.soft_rank != expected_rank:
+                raise ValueError("候选地块软评分名次不一致")
         return self
 
 
@@ -161,6 +231,7 @@ class AgentState(BaseModel):
     poi_evidence: list[POIEvidence] = Field(default_factory=list)
     policy_evidence: list[PolicyEvidence] = Field(default_factory=list)
     results: list[AnalysisResult] = Field(default_factory=list)
+    comparison_report: CandidateComparisonReport | None = None
     errors: list[NonEmptyString] = Field(default_factory=list)
     status: AnalysisStatus = AnalysisStatus.INTAKE
 
@@ -190,4 +261,15 @@ class AgentState(BaseModel):
                 raise ValueError("分析结果 request_id 必须与项目请求一致")
             if result.project_type != self.request.project_type:
                 raise ValueError("分析结果项目类型必须与项目请求一致")
+
+        if self.comparison_report is not None:
+            report = self.comparison_report
+            if report.request_id != self.request.request_id:
+                raise ValueError("候选地块对比报告 request_id 必须与请求一致")
+            if report.project_type != self.request.project_type:
+                raise ValueError("候选地块对比报告项目类型必须与请求一致")
+            result_ids = {result.parcel_id for result in self.results}
+            report_ids = {item.parcel_id for item in report.candidates}
+            if not self.results or report_ids != result_ids or report_ids != parcel_ids:
+                raise ValueError("候选地块对比报告必须完整覆盖分析结果和请求地块")
         return self

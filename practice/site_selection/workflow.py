@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from langgraph.graph import END, START, StateGraph
 
+from .comparison import CandidateComparisonBlockedError, compare_candidate_results
 from .constraints import ConstraintLayerSpec
 from .domain import DatasetManifest, ProjectRequest
 from .evidence import AgentState, AnalysisStatus, EvidenceStatus
@@ -135,6 +136,10 @@ def build_site_selection_graph(
         "results",
         _safe_node("results", assemble_analysis_results),
     )
+    builder.add_node(
+        "comparison",
+        _safe_node("comparison", compare_candidate_results),
+    )
     builder.add_node("failed", _failed_node)
 
     builder.add_edge(START, "poi")
@@ -144,7 +149,8 @@ def build_site_selection_graph(
     _add_guarded_edge(builder, "gis_metrics", "spatial_constraints")
     _add_guarded_edge(builder, "spatial_constraints", "policy_rules")
     _add_guarded_edge(builder, "policy_rules", "results")
-    builder.add_edge("results", END)
+    _add_guarded_edge(builder, "results", "comparison")
+    builder.add_edge("comparison", END)
     builder.add_edge("failed", END)
     return builder.compile()
 
@@ -226,6 +232,7 @@ def _collect_ready_gis_evidence(
 
 
 _EXPECTED_ERRORS = (
+    CandidateComparisonBlockedError,
     ConstraintAnalysisBlockedError,
     GISAnalysisBlockedError,
     POIScoringError,
@@ -259,4 +266,5 @@ def _failed_node(state: AgentState) -> dict[str, Any]:
     return {
         "status": AnalysisStatus.FAILED,
         "results": [],
+        "comparison_report": None,
     }

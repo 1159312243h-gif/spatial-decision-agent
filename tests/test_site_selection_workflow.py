@@ -249,6 +249,14 @@ def test_happy_path_builds_auditable_parcel_result() -> None:
     assert parcel_result.overall_soft_score == pytest.approx(
         parcel_result.poi_evidence.score_report.total_score
     )
+    assert result.comparison_report is not None
+    assert result.comparison_report.scoring_version == "demo-1.0"
+    assert len(result.comparison_report.candidates) == 1
+    assert result.comparison_report.candidates[0].parcel_id == "A01"
+    assert result.comparison_report.candidates[0].soft_rank == 1
+    assert result.comparison_report.candidates[0].policy_outcomes == [
+        RuleOutcome.REVIEW_REQUIRED
+    ]
     assert parcel_result.conclusion is None
     assert not any("未生成软评分" in item for item in parcel_result.warnings)
     assert initial_request.request_id == "REQ-workflow"
@@ -373,6 +381,7 @@ def test_result_assembly_requires_all_three_evidence_types() -> None:
     incomplete_data = completed.model_dump()
     incomplete_data["policy_evidence"] = []
     incomplete_data["results"] = []
+    incomplete_data["comparison_report"] = None
     incomplete_data["status"] = AnalysisStatus.ANALYZING
     incomplete = AgentState.model_validate(incomplete_data)
 
@@ -390,6 +399,7 @@ def test_result_assembly_preserves_explicit_poi_soft_score() -> None:
     scored_data["poi_evidence"][0]["score_report"] = None
     scored_data["poi_evidence"][0]["soft_score"] = 82.5
     scored_data["results"] = []
+    scored_data["comparison_report"] = None
     scored_data["status"] = AnalysisStatus.ANALYZING
     scored = AgentState.model_validate(scored_data)
 

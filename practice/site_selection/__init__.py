@@ -1,5 +1,9 @@
 """Typed contracts for the site-selection analysis workflow."""
 
+from .comparison import (
+    CandidateComparisonBlockedError,
+    compare_candidate_results,
+)
 from .constraints import (
     ConstraintLayerSpec,
     ConstraintLayerType,
@@ -17,6 +21,8 @@ from .evidence import (
     AgentState,
     AnalysisResult,
     AnalysisStatus,
+    CandidateComparisonItem,
+    CandidateComparisonReport,
     EvidenceStatus,
     GISEvidence,
     POIEvidence,
@@ -87,6 +93,9 @@ __all__ = [
     "AgentState",
     "AnalysisResult",
     "AnalysisStatus",
+    "CandidateComparisonBlockedError",
+    "CandidateComparisonItem",
+    "CandidateComparisonReport",
     "CandidateParcel",
     "ConstraintLayerSpec",
     "ConstraintLayerType",
@@ -137,6 +146,7 @@ __all__ = [
     "build_poi_queries",
     "build_site_selection_graph",
     "calculate_poi_metrics",
+    "compare_candidate_results",
     "evaluate_policy_rules",
     "execute_poi_queries",
     "get_project_profile",
