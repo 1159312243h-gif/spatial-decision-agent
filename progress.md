@@ -691,3 +691,60 @@
 - 本机具备 Docker Desktop 后运行 Compose 配置和健康检查
 - 实现 `ProjectTypeRouter`、`ProfileRegistry` 和 POIQuery 构造函数
 - 再进入 CRS、投影、字段完整性和几何有效性校验
+
+## 2026-08-18
+
+### 今日完成
+
+- 安装并验证 WSL 2、Docker Desktop 和 Docker Compose
+- 解决 Docker Hub 连接超时，使用国内镜像下载并在本地标记 Redis、PostGIS 和 Python 镜像
+- 使用真实 `.env` 通过 Compose 配置校验，未覆盖或提交已有 LLM 密钥
+- 成功构建并启动 FastAPI、PostGIS、Redis 三个容器
+- 确认三个服务均为 `healthy`，`/health` 返回 `status=ok, version=0.1.0`
+- 正常停止三个容器，保留容器和数据卷
+- 实现 `ProfileRegistry`，统一管理项目类型与 Profile 的白名单映射
+- 实现 `ProjectTypeRouter`，将商场和物流园请求路由到对应 Profile
+- 实现 `build_poi_queries()`，按候选地块和 Profile 分组生成确定性 POI 查询
+- 实现 `ProjectIntakeSkill`，建立包含 Profile 和 POI 查询的 `DATA_PENDING` 业务状态
+- 实现供应商无关的 `POIGateway` 接口和确定性 `MockPOIGateway`
+- 实现 POI 类别、半径、数量上限过滤及距离排序
+- 实现数量、密度、最近距离和平均距离指标计算
+- 实现 POI 查询结果写回 `POIFeatureSet`、`POIEvidence` 和业务 `AgentState`
+- 新增 19 项入口、路由、查询生成和 Mock POI 测试
+
+### 今日理解
+
+- 未知项目类型和空候选地块应由 Pydantic 在进入路由前拒绝
+- `ProfileRegistry` 管理配置白名单，`ProjectTypeRouter` 只负责选择 Profile
+- `ProjectIntakeSkill` 是确定性业务能力封装，不等于自主 Agent
+- POI 查询生成适合写成纯函数，便于复现、审计和单元测试
+- `POIGateway` 隔离上层业务与高德、百度、PostGIS 等具体供应商
+- Mock 的价值是验证业务编排与供应商实现解耦，不是伪装成真实空间分析
+- POI 数量和距离属于辅助证据，不是法定合规结论
+- 状态执行函数返回重新校验的新对象，避免原地修改造成难以追踪的副作用
+
+### 测试与运行情况
+
+- 选址契约、入口和 POI 定向测试：33 项通过
+- 项目全量测试：86 项通过
+- 既有 Starlette 弃用 warning：1 条，与本次修改无关
+- `git diff --check`：无实际空白错误，仅有 Windows LF/CRLF 提醒
+- Compose：API、PostGIS、Redis 均通过健康检查
+- API 健康接口：`status=ok, version=0.1.0`
+
+### 当前边界
+
+- 当前 POI 数据来自 Mock，尚未调用真实地图 API 或 PostGIS 查询
+- Mock 距离是预先标准化的测试字段，尚未执行真实坐标距离计算
+- 尚未实现 CRS、空间字段和几何有效性校验
+- 尚未实现缓冲区、叠加、相交和空间约束分析
+- 尚未实现 POI 软评分归一化、政策 RAG、RuleEngine 和最终结论
+- 静态 Profile 仍是学习配置，尚未经过真实业务标定
+
+### 下一步
+
+- 学习 GeoPandas 与 PyProj 中 CRS、投影和几何有效性的基本边界
+- 实现 `spatial/validate.py`
+- 拦截缺 CRS、缺必需字段、空几何和无效几何数据
+- 为合法与非法空间数据编写单元测试
+- 通过验证的数据再进入 GIS 分析节点

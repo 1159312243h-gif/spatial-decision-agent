@@ -16,6 +16,13 @@ from .evidence import (
     POIEvidence,
     PolicyEvidence,
 )
+from .intake import (
+    ProfileRegistry,
+    ProjectIntakeSkill,
+    ProjectTypeRouter,
+    UnsupportedProjectTypeError,
+    build_poi_queries,
+)
 from .poi import (
     POIFeatureSet,
     POIMetric,
@@ -23,6 +30,12 @@ from .poi import (
     POIQuery,
     POIRecord,
     POISourceMeta,
+)
+from .poi_service import (
+    MockPOIGateway,
+    POIGateway,
+    calculate_poi_metrics,
+    execute_poi_queries,
 )
 from .profiles import (
     PROJECT_PROFILES,
@@ -40,9 +53,11 @@ __all__ = [
     "DatasetSource",
     "EvidenceStatus",
     "GISEvidence",
+    "MockPOIGateway",
     "POICategoryConfig",
     "POIEvidence",
     "POIFeatureSet",
+    "POIGateway",
     "POIMetric",
     "POIProvider",
     "POIQuery",
@@ -50,8 +65,15 @@ __all__ = [
     "POISourceMeta",
     "PROJECT_PROFILES",
     "PolicyEvidence",
+    "ProfileRegistry",
+    "ProjectIntakeSkill",
     "ProjectProfile",
     "ProjectRequest",
     "ProjectType",
+    "ProjectTypeRouter",
+    "UnsupportedProjectTypeError",
+    "build_poi_queries",
+    "calculate_poi_metrics",
+    "execute_poi_queries",
     "get_project_profile",
 ]
