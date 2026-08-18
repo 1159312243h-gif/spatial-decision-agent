@@ -6,6 +6,10 @@ from .analysis import (
     calculate_spatial_metrics,
     run_gis_analysis,
 )
+from .constraint_analysis import (
+    ConstraintAnalysisBlockedError,
+    run_spatial_constraint_analysis,
+)
 from .gateway import (
     MockSpatialDatasetGateway,
     SpatialDatasetGateway,
@@ -21,6 +25,7 @@ from .validate import (
 )
 
 __all__ = [
+    "ConstraintAnalysisBlockedError",
     "GISAnalysisBlockedError",
     "MockSpatialDatasetGateway",
     "SpatialDatasetGateway",
@@ -33,5 +38,6 @@ __all__ = [
     "calculate_spatial_metrics",
     "parse_crs",
     "run_gis_analysis",
+    "run_spatial_constraint_analysis",
     "validate_spatial_dataset",
 ]

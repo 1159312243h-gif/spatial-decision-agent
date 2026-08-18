@@ -817,3 +817,24 @@
 - 相交和最近距离纯函数已完成，但尚未建立约束图层 Manifest 契约
 - 尚未实现规划、生态、耕地等具体规则和 RuleEngine
 - 当前指标属于空间事实，不直接等于合规结论
+
+### 约束图层契约与空间观察
+
+- 新增 `ConstraintLayerType`，覆盖规划用地、生态保护、耕地保护、开发边界和敏感目标五类图层
+- 新增 `SpatialConstraintRelation`，支持相交和阈值邻近两类空间关系
+- 新增 `ConstraintLayerSpec`，校验项目类型、必需字段、空间关系和距离阈值
+- 新增 `ConstraintObservation`，记录数据版本、分析 CRS、相交数量、最近距离、阈值和命中状态
+- 将 `constraint_observations` 接入 `GISEvidence`，并校验观察记录必须属于同一候选地块
+- 实现 `run_spatial_constraint_analysis()`，复用现有 Gateway、空间校验和确定性 GIS 指标
+- 按项目类型过滤约束配置，非适用约束不会执行
+- `MISSING/INVALID` GIS 证据、缺失 Manifest、无效几何和不可用数据均会阻断分析
+- 重复执行同一约束时替换原观察，避免结果重复；输入状态和源数据保持不变
+- 明确 `triggered=True` 只是空间条件命中，不等于违法、不合规或否决结论
+- 新增 13 个约束契约与空间观察测试；相关定向测试 `48 passed`
+- 项目全量回归 `132 passed, 1 existing warning`
+
+#### 当前边界与下一步
+
+- 当前只产出可审计空间事实，尚未生成政策结论
+- 尚未实现版本化 `RuleDefinition`、法规依据映射和 `RuleEngine`
+- 下一步建立 `ConstraintObservation -> RuleDefinition -> RuleEngine -> PolicyEvidence -> AnalysisResult` 链路

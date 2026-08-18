@@ -4,6 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .constraints import ConstraintObservation
 from .domain import DatasetManifest, NonEmptyString, ProjectRequest, ProjectType
 from .poi import POIFeatureSet, POIQuery
 from .profiles import ProjectProfile
@@ -33,7 +34,19 @@ class GISEvidence(BaseModel):
     crs: NonEmptyString | None = None
     geometry_valid: bool | None = None
     metrics: dict[str, float] = Field(default_factory=dict)
+    constraint_observations: list[ConstraintObservation] = Field(
+        default_factory=list,
+    )
     notes: list[NonEmptyString] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def observations_target_same_parcel(self) -> GISEvidence:
+        if any(
+            observation.parcel_id != self.parcel_id
+            for observation in self.constraint_observations
+        ):
+            raise ValueError("空间约束观察必须属于同一候选地块")
+        return self
 
 
 class POIEvidence(BaseModel):

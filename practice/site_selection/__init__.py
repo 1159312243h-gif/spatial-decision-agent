@@ -1,5 +1,11 @@
 """Typed contracts for the site-selection analysis workflow."""
 
+from .constraints import (
+    ConstraintLayerSpec,
+    ConstraintLayerType,
+    ConstraintObservation,
+    SpatialConstraintRelation,
+)
 from .domain import (
     CandidateParcel,
     DatasetManifest,
@@ -49,6 +55,9 @@ __all__ = [
     "AnalysisResult",
     "AnalysisStatus",
     "CandidateParcel",
+    "ConstraintLayerSpec",
+    "ConstraintLayerType",
+    "ConstraintObservation",
     "DatasetManifest",
     "DatasetSource",
     "EvidenceStatus",
@@ -71,6 +80,7 @@ __all__ = [
     "ProjectRequest",
     "ProjectType",
     "ProjectTypeRouter",
+    "SpatialConstraintRelation",
     "UnsupportedProjectTypeError",
     "build_poi_queries",
     "calculate_poi_metrics",

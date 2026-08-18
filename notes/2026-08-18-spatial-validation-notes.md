@@ -269,3 +269,132 @@ CandidateParcel.geometry_dataset_id
 状态入口当前只回写地块自身的面积、周长和缓冲区指标。相交数量与最近距离已经由纯函数实现并测试，但需要先建立约束图层的 Manifest 和类型契约，才能接入业务状态，避免把任意图层误当作法定约束。
 
 本阶段新增 11 项测试，项目全量达到 `119 passed, 1 existing warning`。
+
+## 十五、约束图层契约与空间观察
+
+本阶段在确定性 GIS 指标之上增加了约束图层契约与空间观察能力，建立如下数据流：
+
+```text
+ConstraintLayerSpec
+-> DatasetManifest
+-> SpatialDatasetGateway
+-> 空间数据校验
+-> 相交/邻近计算
+-> ConstraintObservation
+-> GISEvidence
+```
+
+这里产出的是可审计的空间事实，不是法规判断。`triggered=True` 仅表示配置的空间条件被命中，例如地块与某图层相交，或者距离某类要素不超过阈值；是否属于禁止、限制、提示或允许情形，仍需要后续版本化 `RuleDefinition` 和 `RuleEngine` 结合政策依据判断。
+
+### 15.1 约束图层类型
+
+`ConstraintLayerType` 当前定义五类业务图层：
+
+- `land_use`：规划用地性质。
+- `ecological_protection`：生态保护空间。
+- `farmland_protection`：耕地保护空间。
+- `development_boundary`：城镇开发边界。
+- `sensitive_receptor`：学校、医院、居住区等敏感目标。
+
+枚举限制了系统允许处理的图层语义，避免用任意字符串绕过类型校验。但枚举名称本身不携带法律结论，同一图层在不同地区、项目类型和规则版本下可能对应不同处置要求。
+
+### 15.2 空间关系
+
+`SpatialConstraintRelation` 支持两种确定性关系：
+
+- `intersects`：判断候选地块是否与约束图层相交，以相交要素数大于零作为命中条件。
+- `within_distance`：计算候选地块到约束图层最近要素的距离，以距离小于或等于配置阈值作为命中条件。
+
+契约通过 Pydantic 保证配置自洽：
+
+- `within_distance` 必须声明正数 `distance_threshold_m`。
+- `intersects` 禁止声明距离阈值。
+- 适用项目类型和必需字段不能为空，也不能包含重复值。
+- 未知图层类型、未知空间关系和多余字段会在进入分析前被拒绝。
+
+### 15.3 ConstraintLayerSpec
+
+`ConstraintLayerSpec` 描述“要观察什么以及如何观察”，主要字段包括：
+
+- `constraint_id`：稳定的约束配置标识。
+- `display_name`：便于人工查看的名称。
+- `layer_type`：约束图层业务类型。
+- `dataset_id`：关联的空间数据集。
+- `relation`：相交或邻近关系。
+- `applicable_project_types`：适用的项目类型白名单。
+- `required_fields`：分析前必须存在的业务字段。
+- `distance_threshold_m`：邻近关系使用的距离阈值。
+
+分析入口会先按 `ProjectType` 过滤配置。商场专用约束不会误用于物流园，反之亦然。相同批次中重复的 `constraint_id` 会被拒绝，以保证观察结果可唯一追踪和覆盖更新。
+
+### 15.4 ConstraintObservation
+
+每个候选地块、每条约束生成一条 `ConstraintObservation`，保存：
+
+- 候选地块和约束标识。
+- 图层类型、数据集标识与数据版本。
+- 使用的空间关系和分析 CRS。
+- 相交要素数量。
+- 最近要素距离。
+- 邻近阈值（如果适用）。
+- 空间条件是否命中。
+
+保存 `dataset_version` 与 `analysis_crs` 是为了使结果可复现、可审计。只保存 `triggered` 布尔值会丢失判断依据，无法解释结果来自哪个版本的数据、使用什么坐标系以及实际距离是多少。
+
+### 15.5 分析入口与阻断条件
+
+`run_spatial_constraint_analysis()` 复用现有 `SpatialDatasetGateway`、空间校验器和确定性指标函数，不重复实现数据读取与几何算法。它只接受目标地块 `GISEvidence.status == READY` 的状态。
+
+下列情况会抛出 `ConstraintAnalysisBlockedError`，不会生成观察结果：
+
+- 地块 GIS 证据缺失，或状态为 `MISSING/INVALID`。
+- 候选地块未声明 `geometry_dataset_id`。
+- 目标或约束数据集缺少 `DatasetManifest`。
+- Gateway 找不到数据集。
+- 数据缺 CRS、CRS 不匹配、使用地理坐标系、缺少字段或几何无效。
+- 目标数据集中找不到对应 `parcel_id`。
+- 约束图层无法计算最近距离。
+
+约束图层与地块 CRS 不同时会先转换到地块的投影 CRS，再计算相交和米制距离。输入 `AgentState` 和源 `GeoDataFrame` 不会被原地修改；重复运行同一 `constraint_id` 时替换旧观察，而不是累积重复记录。
+
+### 15.6 当前业务边界
+
+当前模块负责回答“空间上发生了什么”，例如：
+
+```text
+地块 A01 与生态图层相交 1 个要素，最近距离为 0 米。
+```
+
+当前模块不能直接回答：
+
+```text
+地块 A01 违反生态保护规定，因此项目不合规。
+```
+
+第二种表述需要政策来源、规则版本、适用行政区、适用项目类型、规则条件和结论等级。下一阶段应建立：
+
+```text
+ConstraintObservation
+-> RuleDefinition
+-> RuleEngine
+-> PolicyEvidence
+-> AnalysisResult
+```
+
+POI 软评分也不能替代空间约束或政策规则。POI 用于商业便利性、交通可达性等选址偏好；空间观察记录确定性 GIS 事实；RuleEngine 才负责将事实映射为带依据的业务结论。
+
+### 15.7 测试验收
+
+本阶段新增 13 个测试用例，覆盖：
+
+- 相交关系的命中与不命中。
+- 邻近阈值两侧的判断。
+- 相交与邻近配置的参数互斥。
+- 不适用项目类型的约束跳过。
+- `MISSING/INVALID` GIS 证据阻断。
+- 缺少约束数据 Manifest 阻断。
+- 无效约束几何阻断。
+- 重复执行时替换同一观察。
+- 输入状态不可变。
+
+定向测试 `48 passed`，项目全量测试达到 `132 passed, 1 existing warning`。现有 warning 来自 FastAPI 测试依赖中的 Starlette/httpx 兼容性提示，与本阶段空间约束实现无关。
