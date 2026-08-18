@@ -8,6 +8,7 @@ from .constraints import ConstraintObservation
 from .domain import DatasetManifest, NonEmptyString, ProjectRequest, ProjectType
 from .poi import POIFeatureSet, POIQuery
 from .profiles import ProjectProfile
+from .rules import PolicyFinding
 
 
 class EvidenceStatus(StrEnum):
@@ -65,8 +66,34 @@ class PolicyEvidence(BaseModel):
     parcel_id: NonEmptyString
     status: EvidenceStatus
     policy_ids: list[NonEmptyString] = Field(default_factory=list)
+    evaluated_rule_ids: list[NonEmptyString] = Field(default_factory=list)
     findings: list[NonEmptyString] = Field(default_factory=list)
+    rule_findings: list[PolicyFinding] = Field(default_factory=list)
     notes: list[NonEmptyString] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def rule_lineage_is_consistent(self) -> PolicyEvidence:
+        if len(self.policy_ids) != len(set(self.policy_ids)):
+            raise ValueError("PolicyEvidence policy_ids 不能重复")
+        if len(self.evaluated_rule_ids) != len(set(self.evaluated_rule_ids)):
+            raise ValueError("PolicyEvidence evaluated_rule_ids 不能重复")
+        if any(
+            finding.parcel_id != self.parcel_id
+            for finding in self.rule_findings
+        ):
+            raise ValueError("政策规则命中记录必须属于同一候选地块")
+        if any(
+            finding.policy_id not in self.policy_ids
+            for finding in self.rule_findings
+        ):
+            raise ValueError("规则命中的 policy_id 必须出现在 policy_ids 中")
+        finding_rule_ids = {
+            f"{finding.rule_id}@{finding.rule_version}"
+            for finding in self.rule_findings
+        }
+        if not finding_rule_ids.issubset(set(self.evaluated_rule_ids)):
+            raise ValueError("规则命中必须来自已评估的规则版本")
+        return self
 
 
 class AnalysisResult(BaseModel):

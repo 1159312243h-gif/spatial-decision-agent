@@ -838,3 +838,25 @@
 - 当前只产出可审计空间事实，尚未生成政策结论
 - 尚未实现版本化 `RuleDefinition`、法规依据映射和 `RuleEngine`
 - 下一步建立 `ConstraintObservation -> RuleDefinition -> RuleEngine -> PolicyEvidence -> AnalysisResult` 链路
+
+### 版本化 RuleEngine 与政策证据
+
+- 新增 `PolicyReference`，记录政策标识、标题、发布机关、文号、条款、版本、行政区和来源 URI
+- 新增版本化 `RuleDefinition`，支持适用项目类型、约束观察、期望值、有效日期和启用状态
+- 新增 `RuleOutcome`：提示、需复核、受限和禁止；不提供自动合规通过等级
+- 新增结构化 `PolicyFinding`，保存规则、政策、空间观察和数据版本的完整血缘
+- 扩展 `PolicyEvidence`，增加 `evaluated_rule_ids` 和 `rule_findings`，同时保留原字符串字段兼容现有接口
+- 实现 `evaluate_policy_rules()`，按项目类型和请求日期选择有效规则
+- 同一 `rule_id` 存在多个同时有效版本时抛出 `RuleConfigurationError`
+- 无适用规则、GIS 未就绪或缺少规则所需观察时抛出 `RuleEvaluationBlockedError`
+- 未命中规则时明确记录“未命中不等于整体合规”
+- 重复运行替换原政策证据，不修改输入 `AgentState`
+- 当前测试只使用合成政策，不宣称任何真实法规结论
+- 新增 15 项 RuleEngine 测试；定向组合测试 `42 passed`
+- 项目全量回归 `147 passed, 1 existing warning`
+
+#### 下一步
+
+- 搭建业务 LangGraph，将 Intake、POI、GIS 校验、GIS 分析、空间约束和 RuleEngine 串成端到端最小图
+- 将硬约束政策证据与 POI 软评分分离写入 `AnalysisResult`
+- 真实法规规则录入前建立专业复核、版本发布和历史追溯机制

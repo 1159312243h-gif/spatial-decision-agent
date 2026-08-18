@@ -49,6 +49,17 @@ from .profiles import (
     ProjectProfile,
     get_project_profile,
 )
+from .rule_engine import (
+    RuleConfigurationError,
+    RuleEvaluationBlockedError,
+    evaluate_policy_rules,
+)
+from .rules import (
+    PolicyFinding,
+    PolicyReference,
+    RuleDefinition,
+    RuleOutcome,
+)
 
 __all__ = [
     "AgentState",
@@ -74,16 +85,23 @@ __all__ = [
     "POISourceMeta",
     "PROJECT_PROFILES",
     "PolicyEvidence",
+    "PolicyFinding",
+    "PolicyReference",
     "ProfileRegistry",
     "ProjectIntakeSkill",
     "ProjectProfile",
     "ProjectRequest",
     "ProjectType",
     "ProjectTypeRouter",
+    "RuleConfigurationError",
+    "RuleDefinition",
+    "RuleEvaluationBlockedError",
+    "RuleOutcome",
     "SpatialConstraintRelation",
     "UnsupportedProjectTypeError",
     "build_poi_queries",
     "calculate_poi_metrics",
+    "evaluate_policy_rules",
     "execute_poi_queries",
     "get_project_profile",
 ]
