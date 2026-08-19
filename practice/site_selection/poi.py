@@ -21,6 +21,7 @@ class POIProvider(StrEnum):
     BAIDU = "baidu"
     POSTGIS = "postgis"
     MOCK = "mock"
+    OSM = "osm"
 
 
 class POIQuery(BaseModel):
@@ -71,6 +72,8 @@ class POISourceMeta(BaseModel):
     queried_at: datetime
     crs: NonEmptyString = "EPSG:4326"
     record_count: int = Field(ge=0)
+    fallback_from: POIProvider | None = None
+    fallback_reason: NonEmptyString | None = None
 
     @field_validator("dataset_updated_at", "queried_at")
     @classmethod
@@ -83,6 +86,14 @@ class POISourceMeta(BaseModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("POI 来源时间必须包含时区")
         return value
+
+    @model_validator(mode="after")
+    def fallback_metadata_is_complete(self) -> POISourceMeta:
+        if (self.fallback_from is None) != (self.fallback_reason is None):
+            raise ValueError("POI 降级来源和原因必须同时提供")
+        if self.fallback_from is not None and self.provider is not POIProvider.MOCK:
+            raise ValueError("仅 Fixture/mock 响应可以标记为在线源降级")
+        return self
 
 
 class POIFeatureSet(BaseModel):

@@ -1,0 +1,26 @@
+pack_id: fixture-shopping-mall-rules
+version: fixture-2026.08.1
+is_fixture: true
+applicable_project_types:
+  - shopping_mall
+rules:
+  - rule_id: FIXTURE-RULE-ECOLOGY-001
+    name: 合成测试生态空间人工复核规则
+    version: fixture-1.0
+    applicable_project_types:
+      - shopping_mall
+    constraint_id: ecology-observation
+    expected_triggered: true
+    outcome: review_required
+    message: 命中合成测试空间条件，进入人工复核
+    policy:
+      policy_id: FIXTURE-POLICY-SPATIAL-001
+      title: 合成测试空间保护规则
+      issuing_authority: 测试机构
+      document_number: FIXTURE-SPATIAL-001
+      clause: 第三条（合成测试）
+      version: fixture-1.0
+      jurisdiction: 测试行政区
+      source_uri: fixture://policies/spatial-protection
+    valid_from: 2026-01-01
+    enabled: true

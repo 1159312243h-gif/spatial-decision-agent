@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from .comparison import compare_candidate_results
 from .constraints import ConstraintLayerSpec
 from .evidence import AgentState, AnalysisStatus, EvidenceStatus
+from .evidence_review import review_site_selection_evidence
 from .preflight import (
     PreflightDecision,
     SiteSelectionDraft,
@@ -128,6 +129,8 @@ class ReviewAgentOutput(BaseModel):
             raise ValueError("ReviewAgent 输出必须覆盖全部地块结果")
         if self.state.comparison_report is None:
             raise ValueError("ReviewAgent 输出必须包含候选地块对比报告")
+        if self.state.evidence_review_report is None:
+            raise ValueError("ReviewAgent 输出必须包含证据审查报告")
         return self
 
 
@@ -164,7 +167,10 @@ class SpatialAgent:
     def run(self, agent_input: SpatialAgentInput) -> SpatialAgentOutput:
         state = collect_gis_evidence(agent_input.state, self._gateway)
         issues = [
-            f"{item.parcel_id}: status={item.status.value}"
+            (
+                f"{item.parcel_id}: status={item.status.value}, "
+                f"notes={'; '.join(item.notes) or 'none'}"
+            )
             for item in state.gis_evidence
             if item.status is not EvidenceStatus.READY
         ]
@@ -206,4 +212,5 @@ class ReviewAgent:
     def run(self, agent_input: ReviewAgentInput) -> ReviewAgentOutput:
         state = assemble_analysis_results(agent_input.state)
         state = compare_candidate_results(state)
+        state = review_site_selection_evidence(state)
         return ReviewAgentOutput(state=state)

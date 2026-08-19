@@ -23,6 +23,12 @@ from .gateway import (
 )
 from .hashing import stable_spatial_hash
 from .postgis_gateway import PostGISSpatialDatasetGateway
+from .query_engine import (
+    GeoPandasSpatialQueryEngine,
+    PostGISSpatialQueryEngine,
+    SpatialQueryMetrics,
+    StoredSpatialQueryBackend,
+)
 from .validate import (
     SpatialValidationCode,
     SpatialValidationError,
@@ -35,16 +41,20 @@ __all__ = [
     "ConstraintAnalysisBlockedError",
     "FileSpatialDatasetGateway",
     "GISAnalysisBlockedError",
+    "GeoPandasSpatialQueryEngine",
     "MockSpatialDatasetGateway",
     "PostGISSpatialDatasetGateway",
+    "PostGISSpatialQueryEngine",
     "SUPPORTED_SPATIAL_FILE_SUFFIXES",
     "SpatialDatasetAccessError",
     "SpatialDatasetGateway",
     "SpatialDatasetNotFoundError",
     "SpatialMetrics",
+    "SpatialQueryMetrics",
     "SpatialValidationCode",
     "SpatialValidationError",
     "SpatialValidationResult",
+    "StoredSpatialQueryBackend",
     "collect_gis_evidence",
     "calculate_spatial_metrics",
     "parse_crs",

@@ -1,0 +1,59 @@
+{
+  "corpus_id": "site-selection-policy-fixture",
+  "version": "fixture-2026.08.1",
+  "updated_at": "2026-08-22T12:00:00Z",
+  "is_fixture": true,
+  "documents": [
+    {
+      "policy_id": "FIXTURE-POLICY-SPATIAL-001",
+      "title": "合成测试空间保护规则",
+      "issuing_authority": "测试机构",
+      "document_number": "FIXTURE-SPATIAL-001",
+      "version": "fixture-1.0",
+      "jurisdiction": "测试行政区",
+      "source_uri": "fixture://policies/spatial-protection",
+      "applicable_project_types": ["shopping_mall", "logistics_park"],
+      "sections": [
+        {
+          "clause": "第三条（合成测试）",
+          "page_number": 2,
+          "text": "候选地块涉及生态保护空间时，应进入人工复核流程。本条仅用于自动化测试，不代表真实政策结论。"
+        }
+      ]
+    },
+    {
+      "policy_id": "FIXTURE-POLICY-MALL-001",
+      "title": "合成测试商业设施分析指引",
+      "issuing_authority": "测试机构",
+      "document_number": "FIXTURE-MALL-001",
+      "version": "fixture-1.0",
+      "jurisdiction": "测试行政区",
+      "source_uri": "fixture://policies/commercial-access",
+      "applicable_project_types": ["shopping_mall"],
+      "sections": [
+        {
+          "clause": "第五条（合成测试）",
+          "page_number": 4,
+          "text": "商业设施分析可以记录轨道交通站点距离作为软指标。本条仅用于自动化测试。"
+        }
+      ]
+    },
+    {
+      "policy_id": "FIXTURE-POLICY-LOGISTICS-001",
+      "title": "合成测试物流设施分析指引",
+      "issuing_authority": "测试机构",
+      "document_number": "FIXTURE-LOGISTICS-001",
+      "version": "fixture-1.0",
+      "jurisdiction": "测试行政区",
+      "source_uri": "fixture://policies/logistics-access",
+      "applicable_project_types": ["logistics_park"],
+      "sections": [
+        {
+          "clause": "第六条（合成测试）",
+          "page_number": 5,
+          "text": "物流设施分析可以记录高速出入口和货运节点距离。本条仅用于自动化测试。"
+        }
+      ]
+    }
+  ]
+}

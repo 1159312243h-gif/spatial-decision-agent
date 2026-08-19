@@ -11,3 +11,6 @@ shapely
 sqlalchemy
 psycopg[binary]
 redis
+mcp>=2,<3
+pyyaml
+python-docx

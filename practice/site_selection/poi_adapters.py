@@ -77,6 +77,13 @@ class FixturePOIAdapter:
     def dataset(self) -> FixturePOIDataset:
         return self._dataset.model_copy(deep=True)
 
+    @property
+    def cache_token(self) -> str:
+        return (
+            f"fixture:{self._dataset.dataset_id}:{self._dataset.version}:"
+            f"{self._dataset.updated_at.isoformat()}"
+        )
+
     def search(self, query: POIQuery) -> POIFeatureSet:
         records = []
         for record in self._dataset.records:

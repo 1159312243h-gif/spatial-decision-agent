@@ -32,8 +32,18 @@ class FakeRedis:
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
         self.expirations: dict[str, int] = {}
+        self.lists: dict[str, list[str]] = {}
 
-    def set(self, name: str, value: str, *, ex: int) -> bool:
+    def set(
+        self,
+        name: str,
+        value: str,
+        *,
+        ex: int,
+        nx: bool = False,
+    ) -> bool:
+        if nx and name in self.values:
+            return False
         self.values[name] = value
         self.expirations[name] = ex
         return True
@@ -50,3 +60,19 @@ class FakeRedis:
 
     def ttl(self, name: str) -> int:
         return self.expirations.get(name, -2)
+
+    def rpush(self, name: str, value: str) -> int:
+        values = self.lists.setdefault(name, [])
+        values.append(value)
+        return len(values)
+
+    def lrange(self, name: str, start: int, end: int) -> list[bytes]:
+        values = self.lists.get(name, [])
+        stop = len(values) if end == -1 else end + 1
+        return [value.encode("utf-8") for value in values[start:stop]]
+
+    def expire(self, name: str, seconds: int) -> bool:
+        if name not in self.values and name not in self.lists:
+            return False
+        self.expirations[name] = seconds
+        return True

@@ -12,6 +12,7 @@ from .evidence import (
     POIEvidence,
     PolicyEvidence,
 )
+from .site_scoring_contracts import SiteScoreReport
 
 
 class ResultAssemblyBlockedError(RuntimeError):
@@ -24,6 +25,10 @@ def assemble_analysis_results(state: AgentState) -> AgentState:
     gis_by_parcel = _index_by_parcel(state.gis_evidence, "GIS")
     poi_by_parcel = _index_by_parcel(state.poi_evidence, "POI")
     policy_by_parcel = _index_by_parcel(state.policy_evidence, "policy")
+    site_score_by_parcel = _index_by_parcel(
+        state.site_score_reports,
+        "site score",
+    )
 
     results = [
         _assemble_parcel_result(
@@ -32,6 +37,8 @@ def assemble_analysis_results(state: AgentState) -> AgentState:
             gis_by_parcel.get(parcel.parcel_id),
             poi_by_parcel.get(parcel.parcel_id),
             policy_by_parcel.get(parcel.parcel_id),
+            site_score_by_parcel.get(parcel.parcel_id),
+            require_site_score=bool(state.site_score_reports),
         )
         for parcel in state.request.candidate_parcels
     ]
@@ -64,6 +71,9 @@ def _assemble_parcel_result(
     gis_evidence: GISEvidence | None,
     poi_evidence: POIEvidence | None,
     policy_evidence: PolicyEvidence | None,
+    site_score_report: SiteScoreReport | None,
+    *,
+    require_site_score: bool,
 ) -> AnalysisResult:
     evidence_items = {
         "GIS": gis_evidence,
@@ -83,6 +93,10 @@ def _assemble_parcel_result(
 
     if gis_evidence is None or poi_evidence is None or policy_evidence is None:
         raise AssertionError("evidence presence was checked above")
+    if require_site_score and site_score_report is None:
+        raise ResultAssemblyBlockedError(
+            f"候选地块缺少 GIS+POI 场址评分：{parcel_id}"
+        )
 
     warnings = list(policy_evidence.notes)
     if policy_evidence.rule_findings:
@@ -101,7 +115,12 @@ def _assemble_parcel_result(
         gis_evidence=gis_evidence,
         poi_evidence=poi_evidence,
         policy_evidence=policy_evidence,
-        overall_soft_score=poi_evidence.soft_score,
+        overall_soft_score=(
+            site_score_report.total_score
+            if site_score_report is not None
+            else poi_evidence.soft_score
+        ),
+        site_score_report=site_score_report,
         conclusion=None,
         warnings=warnings,
     )

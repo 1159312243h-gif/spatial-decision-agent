@@ -10,6 +10,10 @@ from .comparison import CandidateComparisonBlockedError, compare_candidate_resul
 from .constraints import ConstraintLayerSpec
 from .domain import DatasetManifest, ProjectRequest
 from .evidence import AgentState, AnalysisStatus, EvidenceStatus
+from .evidence_review import (
+    EvidenceReviewBlockedError,
+    review_site_selection_evidence,
+)
 from .intake import ProjectIntakeSkill
 from .poi_scoring import POIScoringConfig, POIScoringError
 from .poi_scoring_service import score_poi_state
@@ -27,6 +31,8 @@ from .spatial.constraint_analysis import (
     run_spatial_constraint_analysis,
 )
 from .spatial.gateway import SpatialDatasetGateway, collect_gis_evidence
+from .site_scoring_contracts import SiteScoringConfig
+from .site_scoring_service import SiteScoringError, score_site_state
 
 
 RouteName = Literal["next", "failed"]
@@ -46,6 +52,7 @@ class SiteSelectionWorkflowDependencies:
     constraint_specs: Sequence[ConstraintLayerSpec]
     rules: Sequence[RuleDefinition]
     buffer_distance_m: float = 500
+    site_scoring_config: SiteScoringConfig | None = None
 
     def __post_init__(self) -> None:
         specs = tuple(self.constraint_specs)
@@ -56,6 +63,12 @@ class SiteSelectionWorkflowDependencies:
             raise ValueError("业务工作流至少需要一条版本化规则")
         if self.buffer_distance_m <= 0:
             raise ValueError("业务工作流缓冲距离必须大于 0")
+        if (
+            self.site_scoring_config is not None
+            and self.site_scoring_config.project_type
+            is not self.poi_scoring_config.project_type
+        ):
+            raise ValueError("场址评分配置与 POI 评分配置项目类型不一致")
         object.__setattr__(self, "constraint_specs", specs)
         object.__setattr__(self, "rules", rules)
 
@@ -133,12 +146,27 @@ def build_site_selection_graph(
         ),
     )
     builder.add_node(
+        "site_scoring",
+        _safe_node(
+            "site_scoring",
+            lambda state: (
+                score_site_state(state, dependencies.site_scoring_config)
+                if dependencies.site_scoring_config is not None
+                else state
+            ),
+        ),
+    )
+    builder.add_node(
         "results",
         _safe_node("results", assemble_analysis_results),
     )
     builder.add_node(
         "comparison",
         _safe_node("comparison", compare_candidate_results),
+    )
+    builder.add_node(
+        "evidence_review",
+        _safe_node("evidence_review", review_site_selection_evidence),
     )
     builder.add_node("failed", _failed_node)
 
@@ -147,10 +175,12 @@ def build_site_selection_graph(
     _add_guarded_edge(builder, "poi_scoring", "gis_collection")
     _add_guarded_edge(builder, "gis_collection", "gis_metrics")
     _add_guarded_edge(builder, "gis_metrics", "spatial_constraints")
-    _add_guarded_edge(builder, "spatial_constraints", "policy_rules")
+    _add_guarded_edge(builder, "spatial_constraints", "site_scoring")
+    _add_guarded_edge(builder, "site_scoring", "policy_rules")
     _add_guarded_edge(builder, "policy_rules", "results")
     _add_guarded_edge(builder, "results", "comparison")
-    builder.add_edge("comparison", END)
+    _add_guarded_edge(builder, "comparison", "evidence_review")
+    builder.add_edge("evidence_review", END)
     builder.add_edge("failed", END)
     return builder.compile()
 
@@ -233,12 +263,14 @@ def _collect_ready_gis_evidence(
 
 _EXPECTED_ERRORS = (
     CandidateComparisonBlockedError,
+    EvidenceReviewBlockedError,
     ConstraintAnalysisBlockedError,
     GISAnalysisBlockedError,
     POIScoringError,
     ResultAssemblyBlockedError,
     RuleConfigurationError,
     RuleEvaluationBlockedError,
+    SiteScoringError,
     WorkflowEvidenceBlockedError,
 )
 

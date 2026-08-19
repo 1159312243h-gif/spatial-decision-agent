@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from hashlib import sha256
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
@@ -11,12 +13,17 @@ from practice.site_selection import (
     CandidateComparisonReport,
     CandidateParcel,
     DatasetManifest,
+    EvidenceReviewReport,
+    AgentState,
+    POIFeatureSet,
+    POIQuery,
     PreflightDecision,
     PreflightStatus,
     ProjectProfile,
     ProjectType,
     SiteSelectionDraft,
 )
+from practice.site_selection.storage import RunEvent, RunState, RunStatus
 
 
 NonEmptyString = Annotated[
@@ -108,12 +115,113 @@ class SiteSelectionAnalysisResponse(BaseModel):
     status: AnalysisStatus
     results: list[AnalysisResult] = Field(default_factory=list)
     comparison_report: CandidateComparisonReport | None = None
+    evidence_review_report: EvidenceReviewReport | None = None
     errors: list[NonEmptyString] = Field(default_factory=list)
+
+    @classmethod
+    def from_state(cls, state: AgentState) -> SiteSelectionAnalysisResponse:
+        return cls(
+            request_id=state.request.request_id,
+            requested_at=state.request.requested_at,
+            project_type=state.request.project_type,
+            status=state.status,
+            results=state.results,
+            comparison_report=state.comparison_report,
+            evidence_review_report=state.evidence_review_report,
+            errors=state.errors,
+        )
+
+
+class SiteSelectionRunResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: NonEmptyString
+    status: RunStatus
+    updated_at: datetime
+    error: NonEmptyString | None = None
+    request_id: NonEmptyString | None = None
+    analysis: SiteSelectionAnalysisResponse | None = None
+
+    @classmethod
+    def from_state(cls, state: RunState) -> SiteSelectionRunResponse:
+        raw_analysis = state.details.get("analysis")
+        analysis = (
+            SiteSelectionAnalysisResponse.from_state(
+                AgentState.model_validate(raw_analysis)
+            )
+            if raw_analysis is not None
+            else None
+        )
+        return cls(
+            run_id=state.run_id,
+            status=state.status,
+            updated_at=state.updated_at,
+            error=state.error,
+            request_id=state.details.get("request_id"),
+            analysis=analysis,
+        )
+
+
+class SiteSelectionRunEventsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: NonEmptyString
+    events: list[RunEvent] = Field(default_factory=list)
+
+
+class SiteSelectionPOIPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_type: ProjectType
+    longitude: float = Field(ge=-180, le=180)
+    latitude: float = Field(ge=-90, le=90)
+    categories: list[NonEmptyString] = Field(min_length=1)
+    radius_m: int = Field(ge=100, le=50_000)
+    limit: int = Field(default=100, ge=1, le=1_000)
+    refresh: bool = False
+
+    @model_validator(mode="after")
+    def categories_are_unique(self) -> SiteSelectionPOIPreviewRequest:
+        if len(self.categories) != len(set(self.categories)):
+            raise ValueError("POI 类别不能重复")
+        return self
+
+    def to_query(self) -> POIQuery:
+        payload = self.model_dump(
+            mode="json",
+            exclude={"project_type", "refresh"},
+        )
+        payload["categories"] = sorted(payload["categories"])
+        canonical = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        query_id = sha256(canonical.encode("utf-8")).hexdigest()[:24]
+        return POIQuery(
+            query_id=f"preview-{query_id}",
+            parcel_id="poi-preview",
+            group_key="poi-preview",
+            longitude=self.longitude,
+            latitude=self.latitude,
+            categories=self.categories,
+            radius_m=self.radius_m,
+            limit=self.limit,
+        )
+
+
+class SiteSelectionPOIPreviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cached: bool
+    feature_set: POIFeatureSet
 
 
 AnalysisErrorCode = Literal[
     "analysis_blocked",
     "analysis_internal_error",
+    "idempotency_conflict",
     "runtime_unavailable",
 ]
 

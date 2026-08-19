@@ -44,6 +44,15 @@ def compare_candidate_results(state: AgentState) -> AgentState:
         )
 
     versions = set()
+    score_modes = {
+        result.site_score_report is not None
+        for result in results_by_parcel.values()
+    }
+    if len(score_modes) != 1:
+        raise CandidateComparisonBlockedError(
+            "候选地块不能混用 POI-only 与 GIS+POI 评分"
+        )
+    uses_site_score = next(iter(score_modes))
     scored_results: list[AnalysisResult] = []
     for parcel_id in sorted(request_ids):
         result = results_by_parcel[parcel_id]
@@ -51,16 +60,22 @@ def compare_candidate_results(state: AgentState) -> AgentState:
             raise CandidateComparisonBlockedError(
                 f"候选地块缺少 POI 软评分：{parcel_id}"
             )
-        report = result.poi_evidence.score_report
-        if report is None:
-            raise CandidateComparisonBlockedError(
-                f"候选地块缺少 POI 评分报告：{parcel_id}"
-            )
-        if report.project_type is not state.request.project_type:
-            raise CandidateComparisonBlockedError(
-                f"候选地块评分报告项目类型不一致：{parcel_id}"
-            )
-        versions.add(report.scoring_version)
+        if uses_site_score:
+            report = result.site_score_report
+            if report is None:
+                raise AssertionError("site score mode was checked above")
+            versions.add(report.scoring_version)
+        else:
+            report = result.poi_evidence.score_report
+            if report is None:
+                raise CandidateComparisonBlockedError(
+                    f"候选地块缺少 POI 评分报告：{parcel_id}"
+                )
+            if report.project_type is not state.request.project_type:
+                raise CandidateComparisonBlockedError(
+                    f"候选地块评分报告项目类型不一致：{parcel_id}"
+                )
+            versions.add(report.scoring_version)
         scored_results.append(result)
 
     if len(versions) != 1:
@@ -76,9 +91,18 @@ def compare_candidate_results(state: AgentState) -> AgentState:
         request_id=state.request.request_id,
         project_type=state.request.project_type,
         scoring_version=next(iter(versions)),
+        ranking_basis=(
+            "gis_poi_soft_score_desc"
+            if uses_site_score
+            else "poi_soft_score_desc"
+        ),
         candidates=_build_ranked_items(ordered),
         notes=[
-            "排名仅依据同一版本的 POI 软评分，不代表合规结论或推荐决定",
+            (
+                "排名依据同一版本的 GIS+POI 软评分，不代表合规结论或推荐决定"
+                if uses_site_score
+                else "排名仅依据同一版本的 POI 软评分，不代表合规结论或推荐决定"
+            ),
             "政策规则命中仅随候选地块展示，不参与软评分名次计算",
         ],
     )
