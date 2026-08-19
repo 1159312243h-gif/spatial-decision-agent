@@ -12,6 +12,9 @@ services:
       - "8000"
     environment:
       APP_ENV: ${APP_ENV:-development}
+      SITE_SELECTION_RUNTIME_MODE: fixture
+      SITE_SELECTION_REPORT_DIR: /app/artifacts/reports
+      SITE_SELECTION_REDIS_NAMESPACE: site_selection:fixture
       LLM_API_KEY: ${LLM_API_KEY:?Set LLM_API_KEY in .env}
       LLM_BASE_URL: ${LLM_BASE_URL:?Set LLM_BASE_URL in .env}
       LLM_MODEL: ${LLM_MODEL:?Set LLM_MODEL in .env}
@@ -19,6 +22,8 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379/0
     ports:
       - "${API_PORT:-8000}:8000"
+    volumes:
+      - report_artifacts:/app/artifacts/reports
     depends_on:
       postgis:
         condition: service_healthy
@@ -33,7 +38,46 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-      start_period: 10s
+      start_period: 20s
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - python
+      - scripts/run_fixture_mcp_server.py
+    environment:
+      SITE_SELECTION_RUNTIME_MODE: fixture
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgis:5432/${POSTGRES_DB:-site_selection}
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8001"
+    ports:
+      - "${MCP_PORT:-8001}:8001"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  workbench:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - python
+      - -m
+      - streamlit
+      - run
+      - workbench/app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+    environment:
+      SITE_SELECTION_API_URL: http://api:8000
+      SITE_SELECTION_PUBLIC_API_URL: http://localhost:${API_PORT:-8000}
+    ports:
+      - "${WORKBENCH_PORT:-8501}:8501"
+    depends_on:
+      api:
+        condition: service_healthy
 
   postgis:
     image: postgis/postgis:16-3.4
@@ -80,3 +124,4 @@ services:
 volumes:
   postgis_data:
   redis_data:
+  report_artifacts:

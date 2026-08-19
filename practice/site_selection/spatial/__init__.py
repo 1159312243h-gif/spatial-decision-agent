@@ -22,7 +22,10 @@ from .gateway import (
     collect_gis_evidence,
 )
 from .hashing import stable_spatial_hash
-from .postgis_gateway import PostGISSpatialDatasetGateway
+from .postgis_gateway import (
+    PostGISSpatialDatasetGateway,
+    StoredPostGISSpatialDatasetGateway,
+)
 from .query_engine import (
     GeoPandasSpatialQueryEngine,
     PostGISSpatialQueryEngine,
@@ -44,6 +47,7 @@ __all__ = [
     "GeoPandasSpatialQueryEngine",
     "MockSpatialDatasetGateway",
     "PostGISSpatialDatasetGateway",
+    "StoredPostGISSpatialDatasetGateway",
     "PostGISSpatialQueryEngine",
     "SUPPORTED_SPATIAL_FILE_SUFFIXES",
     "SpatialDatasetAccessError",

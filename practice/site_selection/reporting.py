@@ -225,6 +225,49 @@ def _add_candidate_section(
         f"POI 评分版本: {poi_report.scoring_version} | 总分: {poi_report.total_score:.2f}",
     )
 
+    document.add_heading("3.2.1 POI 来源与时间", level=3)
+    source_rows = []
+    for feature_set in result.poi_evidence.feature_sets:
+        source = feature_set.source
+        fallback = (
+            f"{source.fallback_from.value}: {source.fallback_reason}"
+            if source.fallback_from is not None
+            else "无"
+        )
+        source_rows.append(
+            [
+                feature_set.query.group_key,
+                source.provider.value,
+                source.dataset_id,
+                source.dataset_version or "未标注",
+                source.queried_at.isoformat(),
+                (
+                    source.dataset_updated_at.isoformat()
+                    if source.dataset_updated_at is not None
+                    else "未标注"
+                ),
+                source.crs,
+                str(source.record_count),
+                fallback,
+            ]
+        )
+    _add_table(
+        document,
+        [
+            "分组",
+            "Provider",
+            "数据集",
+            "版本",
+            "查询时间",
+            "数据更新时间",
+            "CRS",
+            "记录数",
+            "降级来源",
+        ],
+        source_rows,
+        [900, 800, 1350, 1150, 1350, 1350, 900, 600, 960],
+    )
+
     if result.site_score_report is not None:
         document.add_heading("3.3 GIS+POI 组合评分", level=2)
         site_score = result.site_score_report
@@ -295,7 +338,10 @@ def _add_source_section(document: DocumentType, state: AgentState) -> None:
             (
                 f"POI:{feature_set.source.provider.value}:"
                 f"{feature_set.source.dataset_id}:"
-                f"{feature_set.source.dataset_version or 'unversioned'}"
+                f"{feature_set.source.dataset_version or 'unversioned'}:"
+                f"queried_at={feature_set.source.queried_at.isoformat()}:"
+                "dataset_updated_at="
+                f"{feature_set.source.dataset_updated_at.isoformat() if feature_set.source.dataset_updated_at else 'unknown'}"
             )
             for feature_set in result.poi_evidence.feature_sets
         )

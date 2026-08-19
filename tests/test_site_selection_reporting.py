@@ -42,6 +42,9 @@ def test_report_contains_scores_policy_lineage_and_safety_boundary(
     assert "site-score-fixture-1.0" in combined
     assert "第一条" in combined
     assert "policy://demo/workflow" in combined
+    assert "POI 来源与时间" in combined
+    assert "poi-mock" in combined
+    assert "2026-08-18T23:55:00+00:00" in combined
     assert "不构成整体合规结论" in combined
     assert "未生成" in combined
     assert len(document.tables) >= 7

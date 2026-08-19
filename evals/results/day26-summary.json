@@ -1,0 +1,705 @@
+{
+  "suite_id": "site-selection-day26",
+  "version": "2026.08.26.1",
+  "generated_at": "2026-08-19T13:22:37.178559Z",
+  "environment": {
+    "runtime": "local deterministic fixtures",
+    "network": "disabled by evaluation design",
+    "benchmark_scope": "functional regression, not production benchmark"
+  },
+  "total": 24,
+  "passed": 24,
+  "failed": 0,
+  "results": [
+    {
+      "case_id": "PF-001",
+      "category": "preflight",
+      "scenario": "missing_project_type",
+      "passed": true,
+      "elapsed_ms": 0.152,
+      "expected": {
+        "status": "needs_input",
+        "missing_fields": [
+          "project_type",
+          "candidate_parcels",
+          "datasets"
+        ]
+      },
+      "actual": {
+        "status": "needs_input",
+        "project_type": null,
+        "profile": null,
+        "missing_fields": [
+          "project_type",
+          "candidate_parcels",
+          "datasets"
+        ],
+        "unsupported_value": null
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "PF-002",
+      "category": "preflight",
+      "scenario": "unsupported_project_type",
+      "passed": true,
+      "elapsed_ms": 0.132,
+      "expected": {
+        "status": "unsupported",
+        "unsupported_value": "factory"
+      },
+      "actual": {
+        "status": "unsupported",
+        "project_type": null,
+        "profile": null,
+        "missing_fields": [],
+        "unsupported_value": "factory"
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "PF-004",
+      "category": "preflight",
+      "scenario": "missing_area_and_geometry_reference",
+      "passed": true,
+      "elapsed_ms": 0.143,
+      "expected": {
+        "status": "needs_input",
+        "missing_fields": [
+          "candidate_parcels[0].area_hectares",
+          "candidate_parcels[0].geometry_dataset_id",
+          "datasets"
+        ]
+      },
+      "actual": {
+        "status": "needs_input",
+        "project_type": "shopping_mall",
+        "profile": {
+          "project_type": "shopping_mall",
+          "display_name": "商场",
+          "poi_groups": [
+            {
+              "group_key": "public_transit",
+              "display_name": "公共交通",
+              "categories": [
+                "地铁站",
+                "公交站"
+              ],
+              "query_radius_m": 1500,
+              "metrics": [
+                "count",
+                "nearest_distance_m"
+              ],
+              "soft_score_weight": 0.25
+            },
+            {
+              "group_key": "residential",
+              "display_name": "居住人口载体",
+              "categories": [
+                "住宅小区",
+                "公寓"
+              ],
+              "query_radius_m": 3000,
+              "metrics": [
+                "count",
+                "density_per_sq_km"
+              ],
+              "soft_score_weight": 0.2
+            },
+            {
+              "group_key": "office",
+              "display_name": "办公客群",
+              "categories": [
+                "写字楼",
+                "产业园"
+              ],
+              "query_radius_m": 3000,
+              "metrics": [
+                "count",
+                "density_per_sq_km"
+              ],
+              "soft_score_weight": 0.15
+            },
+            {
+              "group_key": "catering",
+              "display_name": "餐饮配套",
+              "categories": [
+                "餐厅",
+                "咖啡馆"
+              ],
+              "query_radius_m": 1500,
+              "metrics": [
+                "count",
+                "average_distance_m"
+              ],
+              "soft_score_weight": 0.15
+            },
+            {
+              "group_key": "public_service",
+              "display_name": "公共服务",
+              "categories": [
+                "医院",
+                "学校",
+                "文化场馆"
+              ],
+              "query_radius_m": 3000,
+              "metrics": [
+                "count",
+                "nearest_distance_m"
+              ],
+              "soft_score_weight": 0.1
+            },
+            {
+              "group_key": "competitor",
+              "display_name": "同类商业设施",
+              "categories": [
+                "购物中心",
+                "百货商场"
+              ],
+              "query_radius_m": 5000,
+              "metrics": [
+                "count",
+                "nearest_distance_m"
+              ],
+              "soft_score_weight": 0.15
+            }
+          ]
+        },
+        "missing_fields": [
+          "candidate_parcels[0].area_hectares",
+          "candidate_parcels[0].geometry_dataset_id",
+          "datasets"
+        ],
+        "unsupported_value": null
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "PF-006",
+      "category": "preflight",
+      "scenario": "ready_shopping_mall",
+      "passed": true,
+      "elapsed_ms": 0.142,
+      "expected": {
+        "status": "ready",
+        "project_type": "shopping_mall",
+        "missing_fields": []
+      },
+      "actual": {
+        "status": "ready",
+        "project_type": "shopping_mall",
+        "profile": {
+          "project_type": "shopping_mall",
+          "display_name": "商场",
+          "poi_groups": [
+            {
+              "group_key": "public_transit",
+              "display_name": "公共交通",
+              "categories": [
+                "地铁站",
+                "公交站"
+              ],
+              "query_radius_m": 1500,
+              "metrics": [
+                "count",
+                "nearest_distance_m"
+              ],
+              "soft_score_weight": 0.25
+            },
+            {
+              "group_key": "residential",
+              "display_name": "居住人口载体",
+              "categories": [
+                "住宅小区",
+                "公寓"
+              ],
+              "query_radius_m": 3000,
+              "metrics": [
+                "count",
+                "density_per_sq_km"
+              ],
+              "soft_score_weight": 0.2
+            },
+            {
+              "group_key": "office",
+              "display_name": "办公客群",
+              "categories": [
+                "写字楼",
+                "产业园"
+              ],
+              "query_radius_m": 3000,
+              "metrics": [
+                "count",
+                "density_per_sq_km"
+              ],
+              "soft_score_weight": 0.15
+            },
+            {
+              "group_key": "catering",
+              "display_name": "餐饮配套",
+              "categories": [
+                "餐厅",
+                "咖啡馆"
+              ],
+              "query_radius_m": 1500,
+              "metrics": [
+                "count",
+                "average_distance_m"
+              ],
+              "soft_score_weight": 0.15
+            },
+            {
+              "group_key": "public_service",
+              "display_name": "公共服务",
+              "categories": [
+                "医院",
+                "学校",
+                "文化场馆"
+              ],
+              "query_radius_m": 3000,
+              "metrics": [
+                "count",
+                "nearest_distance_m"
+              ],
+              "soft_score_weight": 0.1
+            },
+            {
+              "group_key": "competitor",
+              "display_name": "同类商业设施",
+              "categories": [
+                "购物中心",
+                "百货商场"
+              ],
+              "query_radius_m": 5000,
+              "metrics": [
+                "count",
+                "nearest_distance_m"
+              ],
+              "soft_score_weight": 0.15
+            }
+          ]
+        },
+        "missing_fields": [],
+        "unsupported_value": null
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "GIS-001",
+      "category": "spatial",
+      "scenario": "missing_crs",
+      "passed": true,
+      "elapsed_ms": 4.465,
+      "expected": {
+        "status": "blocked",
+        "code": "missing_crs"
+      },
+      "actual": {
+        "status": "blocked",
+        "code": "missing_crs"
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "GIS-002",
+      "category": "spatial",
+      "scenario": "geographic_area",
+      "passed": true,
+      "elapsed_ms": 3.224,
+      "expected": {
+        "status": "blocked",
+        "code": "crs_not_projected"
+      },
+      "actual": {
+        "status": "blocked",
+        "code": "crs_not_projected"
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "GIS-003",
+      "category": "spatial",
+      "scenario": "empty_geometry",
+      "passed": true,
+      "elapsed_ms": 2.201,
+      "expected": {
+        "status": "blocked",
+        "code": "empty_geometry"
+      },
+      "actual": {
+        "status": "blocked",
+        "code": "empty_geometry"
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "GIS-004",
+      "category": "spatial",
+      "scenario": "invalid_geometry",
+      "passed": true,
+      "elapsed_ms": 1.236,
+      "expected": {
+        "status": "blocked",
+        "code": "invalid_geometry"
+      },
+      "actual": {
+        "status": "blocked",
+        "code": "invalid_geometry"
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "GIS-005",
+      "category": "spatial",
+      "scenario": "missing_field",
+      "passed": true,
+      "elapsed_ms": 0.79,
+      "expected": {
+        "status": "blocked",
+        "code": "missing_fields"
+      },
+      "actual": {
+        "status": "blocked",
+        "code": "missing_fields"
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "GIS-006",
+      "category": "spatial",
+      "scenario": "projected_valid",
+      "passed": true,
+      "elapsed_ms": 1.362,
+      "expected": {
+        "status": "ready",
+        "crs": "EPSG:32651",
+        "feature_count": 1
+      },
+      "actual": {
+        "status": "ready",
+        "crs": "EPSG:32651",
+        "feature_count": 1
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "POI-001",
+      "category": "poi",
+      "scenario": "category_filter",
+      "passed": true,
+      "elapsed_ms": 1.19,
+      "expected": {
+        "provider": "mock",
+        "record_count": 2,
+        "categories": [
+          "地铁站"
+        ],
+        "poi_ids": [
+          "F001",
+          "F002"
+        ]
+      },
+      "actual": {
+        "provider": "mock",
+        "record_count": 2,
+        "categories": [
+          "地铁站"
+        ],
+        "poi_ids": [
+          "F001",
+          "F002"
+        ]
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "POI-002",
+      "category": "poi",
+      "scenario": "radius_filter",
+      "passed": true,
+      "elapsed_ms": 0.757,
+      "expected": {
+        "provider": "mock",
+        "record_count": 1,
+        "poi_ids": [
+          "F001"
+        ]
+      },
+      "actual": {
+        "provider": "mock",
+        "record_count": 1,
+        "categories": [
+          "地铁站"
+        ],
+        "poi_ids": [
+          "F001"
+        ]
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "POI-003",
+      "category": "poi",
+      "scenario": "empty_result",
+      "passed": true,
+      "elapsed_ms": 0.493,
+      "expected": {
+        "provider": "mock",
+        "record_count": 0,
+        "categories": [],
+        "poi_ids": []
+      },
+      "actual": {
+        "provider": "mock",
+        "record_count": 0,
+        "categories": [],
+        "poi_ids": []
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "POIF-001",
+      "category": "poi_failure",
+      "scenario": "retry_429_then_success",
+      "passed": true,
+      "elapsed_ms": 0.594,
+      "expected": {
+        "provider": "amap",
+        "http_calls": 2,
+        "circuit_open": false
+      },
+      "actual": {
+        "provider": "amap",
+        "http_calls": 2,
+        "circuit_open": false
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "POIF-002",
+      "category": "poi_failure",
+      "scenario": "open_circuit_fixture_fallback",
+      "passed": true,
+      "elapsed_ms": 0.699,
+      "expected": {
+        "providers": [
+          "mock",
+          "mock"
+        ],
+        "fallback_reasons": [
+          "POIRateLimitError",
+          "POICircuitOpenError"
+        ],
+        "http_calls": 1,
+        "circuit_open": true
+      },
+      "actual": {
+        "providers": [
+          "mock",
+          "mock"
+        ],
+        "fallback_reasons": [
+          "POIRateLimitError",
+          "POICircuitOpenError"
+        ],
+        "http_calls": 1,
+        "circuit_open": true
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "POIF-003",
+      "category": "poi_failure",
+      "scenario": "malformed_response_not_retried",
+      "passed": true,
+      "elapsed_ms": 0.475,
+      "expected": {
+        "error": "POIResponseError",
+        "http_calls": 1,
+        "circuit_open": false
+      },
+      "actual": {
+        "error": "POIResponseError",
+        "http_calls": 1,
+        "circuit_open": false
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "POIF-004",
+      "category": "poi_failure",
+      "scenario": "circuit_blocks_extra_http",
+      "passed": true,
+      "elapsed_ms": 0.456,
+      "expected": {
+        "error": "POICircuitOpenError",
+        "http_calls": 1,
+        "circuit_open": true
+      },
+      "actual": {
+        "error": "POICircuitOpenError",
+        "http_calls": 1,
+        "circuit_open": true
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "RAG-001",
+      "category": "rag",
+      "scenario": "mall_policy_citation",
+      "passed": true,
+      "elapsed_ms": 1.136,
+      "expected": {
+        "result_count": 1,
+        "policy_ids": [
+          "FIXTURE-POLICY-MALL-001"
+        ],
+        "source_uris": [
+          "fixture://policies/commercial-access"
+        ]
+      },
+      "actual": {
+        "result_count": 1,
+        "policy_ids": [
+          "FIXTURE-POLICY-MALL-001"
+        ],
+        "source_uris": [
+          "fixture://policies/commercial-access"
+        ]
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "RAG-002",
+      "category": "rag",
+      "scenario": "logistics_policy_citation",
+      "passed": true,
+      "elapsed_ms": 0.44,
+      "expected": {
+        "result_count": 1,
+        "policy_ids": [
+          "FIXTURE-POLICY-LOGISTICS-001"
+        ],
+        "source_uris": [
+          "fixture://policies/logistics-access"
+        ]
+      },
+      "actual": {
+        "result_count": 1,
+        "policy_ids": [
+          "FIXTURE-POLICY-LOGISTICS-001"
+        ],
+        "source_uris": [
+          "fixture://policies/logistics-access"
+        ]
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "RAG-003",
+      "category": "rag",
+      "scenario": "jurisdiction_empty",
+      "passed": true,
+      "elapsed_ms": 0.322,
+      "expected": {
+        "result_count": 0,
+        "policy_ids": [],
+        "source_uris": []
+      },
+      "actual": {
+        "result_count": 0,
+        "policy_ids": [],
+        "source_uris": []
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "RUN-001",
+      "category": "runtime",
+      "scenario": "policy_rule_match",
+      "passed": true,
+      "elapsed_ms": 68.329,
+      "expected": {
+        "status": "completed",
+        "result_count": 1,
+        "requires_human_review": true,
+        "rule_finding_count": 1,
+        "error_count": 0
+      },
+      "actual": {
+        "status": "completed",
+        "result_count": 1,
+        "requires_human_review": true,
+        "rule_finding_count": 1,
+        "error_count": 0
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "RUN-002",
+      "category": "runtime",
+      "scenario": "no_rule_match",
+      "passed": true,
+      "elapsed_ms": 21.95,
+      "expected": {
+        "status": "completed",
+        "result_count": 1,
+        "requires_human_review": false,
+        "rule_finding_count": 0,
+        "error_count": 0
+      },
+      "actual": {
+        "status": "completed",
+        "result_count": 1,
+        "requires_human_review": false,
+        "rule_finding_count": 0,
+        "error_count": 0
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "RUN-003",
+      "category": "runtime",
+      "scenario": "logistics_complete",
+      "passed": true,
+      "elapsed_ms": 21.391,
+      "expected": {
+        "status": "completed",
+        "result_count": 1,
+        "requires_human_review": true,
+        "rule_finding_count": 1,
+        "error_count": 0
+      },
+      "actual": {
+        "status": "completed",
+        "result_count": 1,
+        "requires_human_review": true,
+        "rule_finding_count": 1,
+        "error_count": 0
+      },
+      "error_type": null
+    },
+    {
+      "case_id": "RUN-004",
+      "category": "runtime",
+      "scenario": "missing_spatial_dataset",
+      "passed": true,
+      "elapsed_ms": 11.33,
+      "expected": {
+        "status": "failed",
+        "result_count": 0,
+        "requires_human_review": null,
+        "rule_finding_count": 0,
+        "error_count": 1
+      },
+      "actual": {
+        "status": "failed",
+        "result_count": 0,
+        "requires_human_review": null,
+        "rule_finding_count": 0,
+        "error_count": 1
+      },
+      "error_type": null
+    }
+  ]
+}

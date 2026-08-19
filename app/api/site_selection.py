@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, status
+from fastapi.responses import FileResponse
 
 from app.schemas.site_selection import (
+    HumanReviewAcknowledgeRequest,
     SiteSelectionAnalysisCreate,
     SiteSelectionAnalysisErrorDetail,
     SiteSelectionAnalysisErrorResponse,
@@ -26,6 +28,7 @@ from app.services.site_selection_run_service import (
     SiteSelectionRunServiceUnavailableError,
     SiteSelectionRunStateInconsistentError,
 )
+from app.services.site_selection_artifacts import SiteSelectionReportNotFoundError
 from practice.site_selection import (
     AnalysisStatus,
     OrchestratorAgent,
@@ -244,6 +247,35 @@ def get_site_selection_run(
         )
 
 
+@router.post(
+    "/runs/{run_id}/human-review/acknowledge",
+    response_model=SiteSelectionRunResponse,
+)
+def acknowledge_site_selection_human_review(
+    run_id: RunIdPath,
+    command: HumanReviewAcknowledgeRequest,
+    service: Annotated[
+        SiteSelectionRunServiceProtocol,
+        Depends(get_site_selection_run_service),
+    ],
+) -> SiteSelectionRunResponse:
+    try:
+        state = service.acknowledge_human_review(
+            run_id,
+            note=command.note,
+        )
+    except SiteSelectionRunNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except (SiteSelectionRunStateInconsistentError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except SiteSelectionRunServiceUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        )
+    return SiteSelectionRunResponse.from_state(state)
+
+
 @router.get(
     "/runs/{run_id}/events",
     response_model=SiteSelectionRunEventsResponse,
@@ -265,6 +297,42 @@ def get_site_selection_run_events(
             detail=str(exc),
         )
     return SiteSelectionRunEventsResponse(run_id=run_id, events=events)
+
+
+@router.get(
+    "/runs/{run_id}/report",
+    response_class=FileResponse,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "运行或报告不存在"},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "运行服务尚未配置"
+        },
+    },
+)
+def download_site_selection_run_report(
+    run_id: RunIdPath,
+    service: Annotated[
+        SiteSelectionRunServiceProtocol,
+        Depends(get_site_selection_run_service),
+    ],
+) -> FileResponse:
+    try:
+        path = service.get_report_path(run_id)
+    except (SiteSelectionRunNotFoundError, SiteSelectionReportNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except SiteSelectionRunServiceUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        )
+    return FileResponse(
+        path,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
+        filename=f"site-selection-{run_id}.docx",
+    )
 
 
 @router.post(

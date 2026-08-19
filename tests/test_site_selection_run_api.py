@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.api.site_selection import get_site_selection_run_service
 from app.main import app
+from app.services.site_selection_artifacts import FileSystemSiteSelectionReportStore
 from tests.test_site_selection_api import valid_payload
 from tests.test_site_selection_run_service import command, preview_command, service
 
@@ -38,6 +39,9 @@ def test_run_api_creates_reads_and_lists_events() -> None:
     assert created.status_code == 201
     assert created.json()["status"] == "completed"
     assert created.json()["analysis"]["status"] == "completed"
+    assert created.json()["explanation"]["status"] == "not_configured"
+    assert created.json()["human_review"]["status"] == "pending"
+    assert created.json()["trace"][-1]["stage"] == "total"
     assert fetched.status_code == 200
     assert fetched.json() == created.json()
     assert [item["event_type"] for item in events.json()["events"]] == [
@@ -45,6 +49,51 @@ def test_run_api_creates_reads_and_lists_events() -> None:
         "started",
         "completed",
     ]
+
+
+def test_run_api_acknowledges_human_review_without_approval() -> None:
+    run_service = service(run_ids=["run-review-001"])
+    app.dependency_overrides[get_site_selection_run_service] = (
+        lambda: run_service
+    )
+    client.post("/site-selection/runs", json=run_payload())
+
+    response = client.post(
+        "/site-selection/runs/run-review-001/human-review/acknowledge",
+        json={"note": "Reviewed evidence only."},
+    )
+    events = client.get("/site-selection/runs/run-review-001/events")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["human_review"]["status"] == "acknowledged"
+    assert events.json()["events"][-1]["event_type"] == (
+        "human_review_acknowledged"
+    )
+    assert events.json()["events"][-1]["details"]["boundary"] == (
+        "acknowledgement_not_compliance_approval"
+    )
+
+
+def test_run_api_returns_and_downloads_report(tmp_path) -> None:
+    run_service = service(
+        run_ids=["run-report-001"],
+        report_store=FileSystemSiteSelectionReportStore(tmp_path),
+    )
+    app.dependency_overrides[get_site_selection_run_service] = (
+        lambda: run_service
+    )
+
+    created = client.post("/site-selection/runs", json=run_payload())
+    report = client.get(created.json()["report_url"])
+
+    assert created.status_code == 201
+    assert created.json()["report_sha256"] is not None
+    assert report.status_code == 200
+    assert report.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument"
+    )
+    assert report.content.startswith(b"PK")
 
 
 def test_run_api_reuses_idempotency_key() -> None:
@@ -119,6 +168,12 @@ def test_default_run_and_preview_endpoints_fail_closed() -> None:
 
     assert run_response.status_code == 503
     assert preview_response.status_code == 503
+
+
+def test_default_report_endpoint_fails_closed() -> None:
+    response = client.get("/site-selection/runs/run-001/report")
+
+    assert response.status_code == 503
 
 
 def test_run_api_rejects_unsafe_run_id_and_blank_idempotency_key() -> None:

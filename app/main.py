@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.api.chat import router as chat_router
@@ -13,6 +16,11 @@ from app.services.site_selection_run_service import (
     SiteSelectionRunService,
     UnconfiguredSiteSelectionRunService,
 )
+from app.services.site_selection_artifacts import FileSystemSiteSelectionReportStore
+from app.services.site_selection_explanation import SiteSelectionEvidenceExplainer
+from app.site_selection_bootstrap import (
+    build_site_selection_bootstrap_from_environment,
+)
 from practice.site_selection.storage import RedisSiteSelectionRuntimeStore
 
 
@@ -20,10 +28,24 @@ def create_app(
     runtime_provider: SiteSelectionRuntimeProvider | None = None,
     *,
     run_store: RedisSiteSelectionRuntimeStore | None = None,
+    report_store: FileSystemSiteSelectionReportStore | None = None,
+    mcp_server: object | None = None,
+    resource_closer: Callable[[], None] | None = None,
+    explainer: SiteSelectionEvidenceExplainer | None = None,
 ) -> FastAPI:
+    lifespan = None
+    if resource_closer is not None:
+        @asynccontextmanager
+        async def lifespan(_application: FastAPI):
+            try:
+                yield
+            finally:
+                resource_closer()
+
     application = FastAPI(
         title="AI Agent Learning API",
         version="0.1.0",
+        lifespan=lifespan,
     )
     provider = (
         runtime_provider
@@ -34,10 +56,16 @@ def create_app(
         SiteSelectionAnalysisService(provider)
     )
     application.state.site_selection_run_service = (
-        SiteSelectionRunService(provider, run_store)
+        SiteSelectionRunService(
+            provider,
+            run_store,
+            report_store=report_store,
+            explainer=explainer,
+        )
         if run_store is not None
         else UnconfiguredSiteSelectionRunService()
     )
+    application.state.site_selection_mcp_server = mcp_server
 
     application.include_router(health_router)
     application.include_router(documents_router)
@@ -46,4 +74,20 @@ def create_app(
     return application
 
 
-app = create_app()
+def create_app_from_environment() -> FastAPI:
+    bootstrap = build_site_selection_bootstrap_from_environment()
+    if bootstrap is None:
+        return create_app()
+    application = create_app(
+        bootstrap.runtime_provider,
+        run_store=bootstrap.run_store,
+        report_store=bootstrap.report_store,
+        mcp_server=bootstrap.mcp_server,
+        resource_closer=bootstrap.close,
+        explainer=bootstrap.explainer,
+    )
+    application.state.site_selection_bootstrap = bootstrap
+    return application
+
+
+app = create_app_from_environment()

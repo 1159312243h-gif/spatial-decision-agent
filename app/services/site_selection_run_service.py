@@ -5,6 +5,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
+from time import perf_counter
 from typing import Protocol
 from uuid import uuid4
 
@@ -17,6 +18,15 @@ from app.services.site_selection_service import (
     SiteSelectionRuntimeConfigurationError,
     SiteSelectionRuntimeProvider,
 )
+from app.services.site_selection_artifacts import (
+    FileSystemSiteSelectionReportStore,
+    SiteSelectionReportNotFoundError,
+)
+from app.services.site_selection_explanation import (
+    SiteSelectionEvidenceExplainer,
+    failed_explanation,
+    unconfigured_explanation,
+)
 from practice.site_selection import (
     AgentState,
     AnalysisStatus,
@@ -24,7 +34,12 @@ from practice.site_selection import (
     POIFeatureSet,
     POIQuery,
     ProjectRequest,
+    HumanReviewState,
+    HumanReviewStatus,
+    RunStageStatus,
+    RunStageTrace,
     SiteSelectionWorkflowDependencies,
+    build_human_review_state,
     run_parallel_site_selection_workflow,
 )
 from practice.site_selection.storage import (
@@ -60,6 +75,15 @@ class SiteSelectionRunServiceProtocol(Protocol):
 
     def get_events(self, run_id: str) -> list[RunEvent]: ...
 
+    def get_report_path(self, run_id: str) -> str: ...
+
+    def acknowledge_human_review(
+        self,
+        run_id: str,
+        *,
+        note: str | None = None,
+    ) -> RunState: ...
+
     def preview_poi(
         self,
         command: SiteSelectionPOIPreviewRequest,
@@ -94,6 +118,9 @@ class SiteSelectionRunService:
         clock: Callable[[], datetime] | None = None,
         run_id_factory: Callable[[], str] | None = None,
         request_id_factory: Callable[[], str] | None = None,
+        report_store: FileSystemSiteSelectionReportStore | None = None,
+        explainer: SiteSelectionEvidenceExplainer | None = None,
+        monotonic: Callable[[], float] | None = None,
     ) -> None:
         if runtime_provider is None or runtime_store is None:
             raise ValueError("运行服务必须配置 RuntimeProvider 和 Redis Store")
@@ -105,6 +132,9 @@ class SiteSelectionRunService:
         self._request_id_factory = request_id_factory or (
             lambda: f"analysis-{uuid4()}"
         )
+        self._report_store = report_store
+        self._explainer = explainer
+        self._monotonic = monotonic or perf_counter
 
     def create_run(
         self,
@@ -112,6 +142,8 @@ class SiteSelectionRunService:
         *,
         idempotency_key: str | None = None,
     ) -> RunState:
+        run_started_at = self._monotonic()
+        traces: list[RunStageTrace] = []
         runtime = self._resolve_runtime(command.project_type)
         proposed_run_id = self._run_id_factory()
         if idempotency_key is not None:
@@ -154,10 +186,16 @@ class SiteSelectionRunService:
         self._append_event(run_id, RunEventType.STARTED, base_details)
 
         try:
-            analysis = self._workflow_runner(
-                request,
-                runtime.datasets,
-                runtime.dependencies,
+            analysis = self._timed_stage(
+                "workflow",
+                lambda: AgentState.model_validate(
+                    self._workflow_runner(
+                        request,
+                        runtime.datasets,
+                        runtime.dependencies,
+                    )
+                ),
+                traces,
             )
         except Exception as exc:
             error = f"选址运行发生未处理异常：{type(exc).__name__}"
@@ -165,7 +203,15 @@ class SiteSelectionRunService:
                 run_id,
                 RunStatus.FAILED,
                 error=error,
-                details=base_details,
+                details={
+                    **base_details,
+                    "trace": _finalize_trace(
+                        traces,
+                        run_started_at,
+                        self._monotonic(),
+                        succeeded=False,
+                    ),
+                },
                 updated_at=self._clock(),
             )
             self._append_event(
@@ -179,7 +225,121 @@ class SiteSelectionRunService:
             **base_details,
             "analysis": analysis.model_dump(mode="json"),
         }
+        if analysis.status is not AnalysisStatus.COMPLETED:
+            workflow_trace = traces[-1]
+            traces[-1] = workflow_trace.model_copy(
+                update={
+                    "status": RunStageStatus.FAILED,
+                    "error_type": "AnalysisFailed",
+                }
+            )
         if analysis.status is AnalysisStatus.COMPLETED:
+            review_report = analysis.evidence_review_report
+            try:
+                if review_report is None:
+                    raise SiteSelectionRunStateInconsistentError(
+                        "completed analysis is missing evidence review"
+                    )
+                human_review = self._timed_stage(
+                    "human_review",
+                    lambda: build_human_review_state(
+                        review_report,
+                        updated_at=self._clock(),
+                    ),
+                    traces,
+                )
+            except Exception as exc:
+                error = f"Run finalization failed: {type(exc).__name__}"
+                failed = self._store.run_states.update(
+                    run_id,
+                    RunStatus.FAILED,
+                    error=error,
+                    details={
+                        **details,
+                        "trace": _finalize_trace(
+                            traces,
+                            run_started_at,
+                            self._monotonic(),
+                            succeeded=False,
+                        ),
+                    },
+                    updated_at=self._clock(),
+                )
+                self._append_event(
+                    run_id,
+                    RunEventType.FAILED,
+                    {**base_details, "error": error},
+                )
+                return failed
+            details["human_review"] = human_review.model_dump(mode="json")
+            if self._explainer is None:
+                explanation = unconfigured_explanation()
+                traces.append(
+                    RunStageTrace(
+                        stage="explanation",
+                        status=RunStageStatus.SKIPPED,
+                        elapsed_ms=0,
+                    )
+                )
+            else:
+                try:
+                    explanation = self._timed_stage(
+                        "explanation",
+                        lambda: self._explainer.explain(analysis),
+                        traces,
+                    )
+                except Exception as exc:
+                    explanation = failed_explanation(exc)
+            details["explanation"] = explanation.model_dump(mode="json")
+            if self._report_store is not None:
+                try:
+                    artifact = self._timed_stage(
+                        "report",
+                        lambda: self._report_store.create(run_id, analysis),
+                        traces,
+                    )
+                except Exception as exc:
+                    error = (
+                        "选址报告生成失败："
+                        f"{type(exc).__name__}"
+                    )
+                    failed = self._store.run_states.update(
+                        run_id,
+                        RunStatus.FAILED,
+                        error=error,
+                        details={
+                            **details,
+                            "trace": _finalize_trace(
+                                traces,
+                                run_started_at,
+                                self._monotonic(),
+                                succeeded=False,
+                            ),
+                        },
+                        updated_at=self._clock(),
+                    )
+                    self._append_event(
+                        run_id,
+                        RunEventType.FAILED,
+                        {**base_details, "error": error},
+                    )
+                    return failed
+                details["report_url"] = artifact.public_url
+                details["report_sha256"] = artifact.sha256
+            else:
+                traces.append(
+                    RunStageTrace(
+                        stage="report",
+                        status=RunStageStatus.SKIPPED,
+                        elapsed_ms=0,
+                    )
+                )
+            details["trace"] = _finalize_trace(
+                traces,
+                run_started_at,
+                self._monotonic(),
+                succeeded=True,
+            )
             completed = self._store.run_states.update(
                 run_id,
                 RunStatus.COMPLETED,
@@ -197,7 +357,15 @@ class SiteSelectionRunService:
             run_id,
             RunStatus.FAILED,
             error=error,
-            details=details,
+            details={
+                **details,
+                "trace": _finalize_trace(
+                    traces,
+                    run_started_at,
+                    self._monotonic(),
+                    succeeded=False,
+                ),
+            },
             updated_at=self._clock(),
         )
         self._append_event(
@@ -213,9 +381,68 @@ class SiteSelectionRunService:
             raise SiteSelectionRunNotFoundError(f"选址运行不存在：{run_id}")
         return state
 
+    def acknowledge_human_review(
+        self,
+        run_id: str,
+        *,
+        note: str | None = None,
+    ) -> RunState:
+        state = self.get_run(run_id)
+        raw_review = state.details.get("human_review")
+        if raw_review is None:
+            raise SiteSelectionRunStateInconsistentError(
+                "run is missing human review state"
+            )
+        review = HumanReviewState.model_validate(raw_review)
+        if review.status is HumanReviewStatus.NOT_REQUIRED:
+            raise SiteSelectionRunStateInconsistentError(
+                "run does not require human review"
+            )
+        if review.status is HumanReviewStatus.ACKNOWLEDGED:
+            return state
+
+        normalized_note = note.strip() if note is not None else None
+        if note is not None and not normalized_note:
+            raise ValueError("human review note cannot be blank")
+        acknowledged = HumanReviewState(
+            status=HumanReviewStatus.ACKNOWLEDGED,
+            reason_codes=review.reason_codes,
+            updated_at=self._clock(),
+            note=normalized_note,
+        )
+        details = dict(state.details)
+        details["human_review"] = acknowledged.model_dump(mode="json")
+        updated = self._store.run_states.update(
+            run_id,
+            state.status,
+            details=details,
+            updated_at=self._clock(),
+        )
+        self._append_event(
+            run_id,
+            RunEventType.HUMAN_REVIEW_ACKNOWLEDGED,
+            {
+                "reason_codes": acknowledged.reason_codes,
+                "boundary": "acknowledgement_not_compliance_approval",
+            },
+        )
+        return updated
+
     def get_events(self, run_id: str) -> list[RunEvent]:
         self.get_run(run_id)
         return self._store.list_events(run_id)
+
+    def get_report_path(self, run_id: str) -> str:
+        state = self.get_run(run_id)
+        if state.status is not RunStatus.COMPLETED:
+            raise SiteSelectionReportNotFoundError(
+                f"选址运行尚无可下载报告：{run_id}"
+            )
+        if self._report_store is None or not state.details.get("report_url"):
+            raise SiteSelectionReportNotFoundError(
+                f"选址运行报告未配置：{run_id}"
+            )
+        return str(self._report_store.resolve(run_id))
 
     def preview_poi(
         self,
@@ -264,6 +491,36 @@ class SiteSelectionRunService:
             )
         )
 
+    def _timed_stage(
+        self,
+        stage: str,
+        operation: Callable[[], object],
+        traces: list[RunStageTrace],
+    ):
+        started_at = self._monotonic()
+        try:
+            result = operation()
+        except Exception as exc:
+            traces.append(
+                _stage_trace(
+                    stage,
+                    RunStageStatus.FAILED,
+                    started_at,
+                    self._monotonic(),
+                    error_type=type(exc).__name__,
+                )
+            )
+            raise
+        traces.append(
+            _stage_trace(
+                stage,
+                RunStageStatus.SUCCEEDED,
+                started_at,
+                self._monotonic(),
+            )
+        )
+        return result
+
 
 class UnconfiguredSiteSelectionRunService:
     """Fail-closed default until both runtime and Redis are explicitly wired."""
@@ -280,6 +537,12 @@ class UnconfiguredSiteSelectionRunService:
         return self._unavailable()
 
     def get_events(self, run_id):
+        return self._unavailable()
+
+    def get_report_path(self, run_id):
+        return self._unavailable()
+
+    def acknowledge_human_review(self, run_id, *, note=None):
         return self._unavailable()
 
     def preview_poi(self, command):
@@ -328,3 +591,39 @@ def _command_fingerprint(command: SiteSelectionAnalysisCreate) -> str:
         separators=(",", ":"),
     )
     return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _stage_trace(
+    stage: str,
+    status: RunStageStatus,
+    started_at: float,
+    finished_at: float,
+    *,
+    error_type: str | None = None,
+) -> RunStageTrace:
+    return RunStageTrace(
+        stage=stage,
+        status=status,
+        elapsed_ms=round(max(0.0, finished_at - started_at) * 1_000, 3),
+        error_type=error_type,
+    )
+
+
+def _finalize_trace(
+    traces: list[RunStageTrace],
+    run_started_at: float,
+    finished_at: float,
+    *,
+    succeeded: bool,
+) -> list[dict]:
+    total = _stage_trace(
+        "total",
+        RunStageStatus.SUCCEEDED if succeeded else RunStageStatus.FAILED,
+        run_started_at,
+        finished_at,
+        error_type=None if succeeded else "RunFailed",
+    )
+    return [
+        trace.model_dump(mode="json")
+        for trace in [*traces, total]
+    ]

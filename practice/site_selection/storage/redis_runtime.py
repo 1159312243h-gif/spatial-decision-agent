@@ -46,6 +46,7 @@ class RunEventType(StrEnum):
     STARTED = "started"
     COMPLETED = "completed"
     FAILED = "failed"
+    HUMAN_REVIEW_ACKNOWLEDGED = "human_review_acknowledged"
 
 
 class RunEvent(BaseModel):

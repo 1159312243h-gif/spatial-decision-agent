@@ -14,6 +14,7 @@ from practice.site_selection import (
     CandidateParcel,
     DatasetManifest,
     EvidenceReviewReport,
+    HumanReviewState,
     AgentState,
     POIFeatureSet,
     POIQuery,
@@ -22,8 +23,10 @@ from practice.site_selection import (
     ProjectProfile,
     ProjectType,
     SiteSelectionDraft,
+    RunStageTrace,
 )
 from practice.site_selection.storage import RunEvent, RunState, RunStatus
+from app.services.site_selection_explanation import SiteSelectionEvidenceExplanation
 
 
 NonEmptyString = Annotated[
@@ -141,6 +144,14 @@ class SiteSelectionRunResponse(BaseModel):
     error: NonEmptyString | None = None
     request_id: NonEmptyString | None = None
     analysis: SiteSelectionAnalysisResponse | None = None
+    report_url: NonEmptyString | None = None
+    report_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[a-f0-9]{64}$",
+    )
+    explanation: SiteSelectionEvidenceExplanation | None = None
+    human_review: HumanReviewState | None = None
+    trace: list[RunStageTrace] = Field(default_factory=list)
 
     @classmethod
     def from_state(cls, state: RunState) -> SiteSelectionRunResponse:
@@ -159,7 +170,18 @@ class SiteSelectionRunResponse(BaseModel):
             error=state.error,
             request_id=state.details.get("request_id"),
             analysis=analysis,
+            report_url=state.details.get("report_url"),
+            report_sha256=state.details.get("report_sha256"),
+            explanation=state.details.get("explanation"),
+            human_review=state.details.get("human_review"),
+            trace=state.details.get("trace", []),
         )
+
+
+class HumanReviewAcknowledgeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: NonEmptyString | None = None
 
 
 class SiteSelectionRunEventsResponse(BaseModel):

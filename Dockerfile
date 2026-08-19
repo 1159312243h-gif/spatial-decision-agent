@@ -10,6 +10,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY practice ./practice
+COPY data ./data
+COPY deploy ./deploy
+COPY scripts ./scripts
+COPY workbench ./workbench
+
+RUN mkdir -p /app/artifacts/reports
 
 EXPOSE 8000
 

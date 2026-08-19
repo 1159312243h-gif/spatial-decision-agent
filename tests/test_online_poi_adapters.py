@@ -20,6 +20,8 @@ from practice.site_selection.online_poi_adapters import (
     OverpassTagFilter,
     POIRateLimitError,
     POIResponseError,
+    POICircuitOpenError,
+    RetryingCircuitBreakerPOIAdapter,
 )
 
 
@@ -199,6 +201,109 @@ def test_fallback_does_not_hide_malformed_payload() -> None:
 
     with pytest.raises(POIResponseError, match="pois"):
         FallbackPOIAdapter(primary, fixture).search(query())
+
+
+def test_reliable_adapter_retries_transient_rate_limit_then_succeeds() -> None:
+    client = FakeHTTPClient(
+        [
+            FakeResponse(429, {}),
+            FakeResponse(200, amap_payload([amap_item(1, 121.481)])),
+        ]
+    )
+    sleeps = []
+    primary = AmapPOIAdapter(
+        "test-api-key",
+        client,
+        OffsetTransformer(),
+        clock=lambda: NOW,
+    )
+    reliable = RetryingCircuitBreakerPOIAdapter(
+        primary,
+        max_attempts=2,
+        base_backoff_seconds=0.25,
+        sleep=sleeps.append,
+    )
+
+    result = reliable.search(query(limit=1))
+
+    assert result.source.provider is POIProvider.AMAP
+    assert len(client.get_calls) == 2
+    assert sleeps == [0.25]
+    assert reliable.circuit_open is False
+
+
+def test_open_circuit_uses_explicit_fixture_fallback_without_more_http() -> None:
+    client = FakeHTTPClient([FakeResponse(429, {})])
+    primary = AmapPOIAdapter(
+        "test-api-key",
+        client,
+        OffsetTransformer(),
+    )
+    reliable = RetryingCircuitBreakerPOIAdapter(
+        primary,
+        max_attempts=1,
+        failure_threshold=1,
+        recovery_timeout_seconds=60,
+    )
+    fixture = FixturePOIAdapter.from_json(FIXTURE_PATH, clock=lambda: NOW)
+    adapter = FallbackPOIAdapter(reliable, fixture)
+
+    first = adapter.search(query(limit=20))
+    second = adapter.search(query(limit=20))
+
+    assert first.source.fallback_reason == "POIRateLimitError"
+    assert second.source.fallback_reason == "POICircuitOpenError"
+    assert len(client.get_calls) == 1
+    assert reliable.circuit_open is True
+
+
+def test_reliable_adapter_does_not_retry_malformed_response() -> None:
+    client = FakeHTTPClient(
+        [
+            FakeResponse(200, {"status": "1"}),
+            FakeResponse(200, amap_payload([amap_item(1, 121.481)])),
+        ]
+    )
+    reliable = RetryingCircuitBreakerPOIAdapter(
+        AmapPOIAdapter("test-api-key", client, OffsetTransformer()),
+        max_attempts=2,
+        failure_threshold=1,
+    )
+
+    with pytest.raises(POIResponseError, match="pois"):
+        reliable.search(query())
+
+    assert len(client.get_calls) == 1
+    assert reliable.circuit_open is False
+
+
+def test_open_circuit_allows_probe_after_recovery_timeout() -> None:
+    current = [10.0]
+    client = FakeHTTPClient(
+        [
+            FakeResponse(429, {}),
+            FakeResponse(200, amap_payload([amap_item(1, 121.481)])),
+        ]
+    )
+    reliable = RetryingCircuitBreakerPOIAdapter(
+        AmapPOIAdapter("test-api-key", client, OffsetTransformer()),
+        max_attempts=1,
+        failure_threshold=1,
+        recovery_timeout_seconds=5,
+        monotonic=lambda: current[0],
+    )
+
+    with pytest.raises(POIRateLimitError):
+        reliable.search(query())
+    with pytest.raises(POICircuitOpenError):
+        reliable.search(query())
+
+    current[0] = 15.0
+    result = reliable.search(query(limit=1))
+
+    assert result.records
+    assert len(client.get_calls) == 2
+    assert reliable.circuit_open is False
 
 
 def overpass_filters() -> dict[str, OverpassTagFilter]:

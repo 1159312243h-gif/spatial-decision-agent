@@ -1,0 +1,73 @@
+{
+  "suite_id": "site-selection-day26",
+  "version": "2026.08.26.1",
+  "frozen_at": "2026-08-26T12:00:00Z",
+  "fixture_versions": {
+    "poi": "fixture-2026.08.1",
+    "policy": "fixture-2026.08.1",
+    "spatial": "fixture-2026.08.24.1"
+  },
+  "notes": [
+    "所有案例使用合成 Fixture，不代表生产数据覆盖率。",
+    "在线 POI 数量与网络延迟不作为固定期望值。",
+    "人工确认仅表示已阅，不表示合规批准。"
+  ],
+  "cases": [
+    {
+      "case_id": "PF-001",
+      "category": "preflight",
+      "scenario": "missing_project_type",
+      "input": {},
+      "expected": {"status": "needs_input", "missing_fields": ["project_type", "candidate_parcels", "datasets"]}
+    },
+    {
+      "case_id": "PF-002",
+      "category": "preflight",
+      "scenario": "unsupported_project_type",
+      "input": {"project_type": "factory"},
+      "expected": {"status": "unsupported", "unsupported_value": "factory"}
+    },
+    {
+      "case_id": "PF-004",
+      "category": "preflight",
+      "scenario": "missing_area_and_geometry_reference",
+      "input": {
+        "project_type": "shopping_mall",
+        "candidate_parcels": [{"parcel_id": "A01", "longitude": 121.47, "latitude": 31.23}],
+        "datasets": []
+      },
+      "expected": {"status": "needs_input", "missing_fields": ["candidate_parcels[0].area_hectares", "candidate_parcels[0].geometry_dataset_id", "datasets"]}
+    },
+    {
+      "case_id": "PF-006",
+      "category": "preflight",
+      "scenario": "ready_shopping_mall",
+      "input": {
+        "project_type": "shopping_mall",
+        "candidate_parcels": [{"parcel_id": "A01", "longitude": 121.47, "latitude": 31.23, "area_hectares": 1.0, "geometry_dataset_id": "candidate-layer"}],
+        "datasets": [{"dataset_id": "candidate-layer", "name": "合成候选图层", "source": "postgis", "location": "candidate-layer", "version": "fixture-1", "crs": "EPSG:32651", "required_fields": ["parcel_id"], "updated_at": "2026-08-26T12:00:00Z"}]
+      },
+      "expected": {"status": "ready", "project_type": "shopping_mall", "missing_fields": []}
+    },
+    {"case_id": "GIS-001", "category": "spatial", "scenario": "missing_crs", "input": {}, "expected": {"status": "blocked", "code": "missing_crs"}},
+    {"case_id": "GIS-002", "category": "spatial", "scenario": "geographic_area", "input": {"crs": "EPSG:4326"}, "expected": {"status": "blocked", "code": "crs_not_projected"}},
+    {"case_id": "GIS-003", "category": "spatial", "scenario": "empty_geometry", "input": {}, "expected": {"status": "blocked", "code": "empty_geometry"}},
+    {"case_id": "GIS-004", "category": "spatial", "scenario": "invalid_geometry", "input": {}, "expected": {"status": "blocked", "code": "invalid_geometry"}},
+    {"case_id": "GIS-005", "category": "spatial", "scenario": "missing_field", "input": {}, "expected": {"status": "blocked", "code": "missing_fields"}},
+    {"case_id": "GIS-006", "category": "spatial", "scenario": "projected_valid", "input": {"crs": "EPSG:32651"}, "expected": {"status": "ready", "crs": "EPSG:32651", "feature_count": 1}},
+    {"case_id": "POI-001", "category": "poi", "scenario": "category_filter", "input": {"categories": ["地铁站"], "radius_m": 2000}, "expected": {"provider": "mock", "record_count": 2, "categories": ["地铁站"], "poi_ids": ["F001", "F002"]}},
+    {"case_id": "POI-002", "category": "poi", "scenario": "radius_filter", "input": {"categories": ["地铁站"], "radius_m": 300}, "expected": {"provider": "mock", "record_count": 1, "poi_ids": ["F001"]}},
+    {"case_id": "POI-003", "category": "poi", "scenario": "empty_result", "input": {"longitude": 0, "latitude": 0, "categories": ["地铁站"], "radius_m": 500}, "expected": {"provider": "mock", "record_count": 0, "categories": [], "poi_ids": []}},
+    {"case_id": "POIF-001", "category": "poi_failure", "scenario": "retry_429_then_success", "input": {"categories": ["地铁站"], "limit": 1}, "expected": {"provider": "amap", "http_calls": 2, "circuit_open": false}},
+    {"case_id": "POIF-002", "category": "poi_failure", "scenario": "open_circuit_fixture_fallback", "input": {"categories": ["地铁站"], "limit": 20}, "expected": {"providers": ["mock", "mock"], "fallback_reasons": ["POIRateLimitError", "POICircuitOpenError"], "http_calls": 1, "circuit_open": true}},
+    {"case_id": "POIF-003", "category": "poi_failure", "scenario": "malformed_response_not_retried", "input": {"categories": ["地铁站"]}, "expected": {"error": "POIResponseError", "http_calls": 1, "circuit_open": false}},
+    {"case_id": "POIF-004", "category": "poi_failure", "scenario": "circuit_blocks_extra_http", "input": {"categories": ["地铁站"]}, "expected": {"error": "POICircuitOpenError", "http_calls": 1, "circuit_open": true}},
+    {"case_id": "RAG-001", "category": "rag", "scenario": "mall_policy_citation", "input": {"query": "商业设施轨道交通站点距离", "project_type": "shopping_mall", "jurisdiction": "测试行政区", "top_k": 1}, "expected": {"result_count": 1, "policy_ids": ["FIXTURE-POLICY-MALL-001"], "source_uris": ["fixture://policies/commercial-access"]}},
+    {"case_id": "RAG-002", "category": "rag", "scenario": "logistics_policy_citation", "input": {"query": "物流高速出入口货运节点距离", "project_type": "logistics_park", "jurisdiction": "测试行政区", "top_k": 1}, "expected": {"result_count": 1, "policy_ids": ["FIXTURE-POLICY-LOGISTICS-001"], "source_uris": ["fixture://policies/logistics-access"]}},
+    {"case_id": "RAG-003", "category": "rag", "scenario": "jurisdiction_empty", "input": {"query": "生态保护空间", "project_type": "shopping_mall", "jurisdiction": "不存在的行政区"}, "expected": {"result_count": 0, "policy_ids": [], "source_uris": []}},
+    {"case_id": "RUN-001", "category": "runtime", "scenario": "policy_rule_match", "input": {"project_type": "shopping_mall"}, "expected": {"status": "completed", "result_count": 1, "requires_human_review": true, "rule_finding_count": 1, "error_count": 0}},
+    {"case_id": "RUN-002", "category": "runtime", "scenario": "no_rule_match", "input": {"project_type": "shopping_mall"}, "expected": {"status": "completed", "result_count": 1, "requires_human_review": false, "rule_finding_count": 0, "error_count": 0}},
+    {"case_id": "RUN-003", "category": "runtime", "scenario": "logistics_complete", "input": {"project_type": "logistics_park"}, "expected": {"status": "completed", "result_count": 1, "requires_human_review": true, "rule_finding_count": 1, "error_count": 0}},
+    {"case_id": "RUN-004", "category": "runtime", "scenario": "missing_spatial_dataset", "input": {"project_type": "shopping_mall"}, "expected": {"status": "failed", "result_count": 0, "requires_human_review": null, "rule_finding_count": 0, "error_count": 1}}
+  ]
+}

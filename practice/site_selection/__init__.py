@@ -122,9 +122,11 @@ from .online_poi_adapters import (
     OverpassTagFilter,
     POIAdapterError,
     POIAvailabilityError,
+    POICircuitOpenError,
     POIRateLimitError,
     POIResponseError,
     POIUpstreamError,
+    RetryingCircuitBreakerPOIAdapter,
 )
 from .policy_rag import (
     PolicyChunk,
@@ -166,6 +168,13 @@ from .review_contracts import (
     EvidenceReviewReport,
     EvidenceReviewStatus,
     ReviewIssueSeverity,
+)
+from .run_reliability import (
+    HumanReviewState,
+    HumanReviewStatus,
+    RunStageStatus,
+    RunStageTrace,
+    build_human_review_state,
 )
 from .rules import (
     PolicyFinding,
@@ -215,6 +224,8 @@ __all__ = [
     "FixedIntervalRateLimiter",
     "GCJ02CoordinateTransformer",
     "GISEvidence",
+    "HumanReviewState",
+    "HumanReviewStatus",
     "GISMetricScore",
     "GISMetricScoringRule",
     "GISScoreComponent",
@@ -230,6 +241,7 @@ __all__ = [
     "POICategoryConfig",
     "POIAdapterError",
     "POIAvailabilityError",
+    "POICircuitOpenError",
     "POIGroupScore",
     "POIGroupScoringConfig",
     "POIEvidence",
@@ -290,6 +302,9 @@ __all__ = [
     "ReviewAgentInput",
     "ReviewAgentOutput",
     "ReviewIssueSeverity",
+    "RetryingCircuitBreakerPOIAdapter",
+    "RunStageStatus",
+    "RunStageTrace",
     "RawPOI",
     "ScoreDirection",
     "SiteSelectionWorkflowDependencies",
@@ -308,6 +323,7 @@ __all__ = [
     "WorkflowEvidenceBlockedError",
     "assemble_analysis_results",
     "build_poi_queries",
+    "build_human_review_state",
     "build_poi_metrics_report",
     "chunk_policy_documents",
     "load_policy_corpus",

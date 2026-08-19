@@ -1,0 +1,71 @@
+{
+  "report_id": "site-selection-day26-local-fixture",
+  "generated_at": "2026-08-19T13:23:35.238229Z",
+  "environment": {
+    "python": "3.12.4",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 197 Stepping 2, GenuineIntel"
+  },
+  "fixture_versions": {
+    "poi": "fixture-2026.08.1",
+    "policy": "fixture-2026.08.1",
+    "spatial": "fixture-2026.08.24.1"
+  },
+  "disclaimer": "Local deterministic fixture measurements only. They are not a production benchmark, capacity claim, or online POI SLA.",
+  "measurements": [
+    {
+      "metric": "gis_geopandas_area_intersection_distance",
+      "samples": 7,
+      "warmup_runs": 2,
+      "median_ms": 0.135,
+      "min_ms": 0.122,
+      "max_ms": 0.161,
+      "state": "in-memory projected fixture",
+      "input_summary": {
+        "candidate_features": 1,
+        "constraint_features": 1,
+        "crs": "EPSG:32651"
+      }
+    },
+    {
+      "metric": "poi_fixture_search",
+      "samples": 7,
+      "warmup_runs": 2,
+      "median_ms": 0.031,
+      "min_ms": 0.029,
+      "max_ms": 0.037,
+      "state": "local JSON fixture; no Redis; no network",
+      "input_summary": {
+        "fixture_records": 32,
+        "radius_m": 3000,
+        "categories": 2
+      }
+    },
+    {
+      "metric": "rag_hybrid_retrieval",
+      "samples": 7,
+      "warmup_runs": 2,
+      "median_ms": 0.033,
+      "min_ms": 0.029,
+      "max_ms": 0.042,
+      "state": "in-memory fixture corpus; deterministic embeddings",
+      "input_summary": {
+        "policy_documents": 3,
+        "top_k": 3
+      }
+    },
+    {
+      "metric": "day26_frozen_suite",
+      "samples": 7,
+      "warmup_runs": 2,
+      "median_ms": 88.798,
+      "min_ms": 82.728,
+      "max_ms": 106.135,
+      "state": "24 deterministic cases; no live providers",
+      "input_summary": {
+        "cases": 24,
+        "poi_failure_cases": 4
+      }
+    }
+  ]
+}

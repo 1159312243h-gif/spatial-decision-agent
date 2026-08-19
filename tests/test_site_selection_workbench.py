@@ -1,0 +1,158 @@
+from datetime import datetime, timezone
+from pathlib import Path
+import sys
+
+import httpx
+import pytest
+
+from app.schemas.site_selection import (
+    SiteSelectionAnalysisResponse,
+    SiteSelectionRunResponse,
+)
+from practice.site_selection.storage import RunStatus
+from tests.test_site_selection_reporting import completed_state
+from workbench.site_selection_client import (
+    SiteSelectionAPIClient,
+    SiteSelectionAPIError,
+    available_poi_categories,
+    candidate_comparison_rows,
+    map_rows,
+    poi_metric_rows,
+    poi_record_rows,
+)
+
+
+def completed_run() -> SiteSelectionRunResponse:
+    state = completed_state()
+    return SiteSelectionRunResponse(
+        run_id="run-workbench-001",
+        status=RunStatus.COMPLETED,
+        updated_at=datetime(2026, 8, 24, tzinfo=timezone.utc),
+        request_id=state.request.request_id,
+        analysis=SiteSelectionAnalysisResponse.from_state(state),
+        report_url="/site-selection/runs/run-workbench-001/report",
+        report_sha256="a" * 64,
+    )
+
+
+def test_workbench_builds_comparison_poi_metrics_and_map_rows() -> None:
+    run = completed_run()
+    payload = {
+        "candidate_parcels": [
+            {
+                "parcel_id": "A01",
+                "longitude": 121.47,
+                "latitude": 31.23,
+            }
+        ]
+    }
+
+    comparison = candidate_comparison_rows(run)
+    categories = available_poi_categories(run)
+    records = poi_record_rows(run, categories=["地铁站"])
+    metrics = poi_metric_rows(run)
+    points = map_rows(payload, run, categories=["地铁站"])
+
+    assert comparison[0]["parcel_id"] == "A01"
+    assert comparison[0]["review_required"] is True
+    assert categories == ["地铁站"]
+    assert records[0]["provider"] == "mock"
+    assert any(row["metric"] == "count" for row in metrics)
+    assert [row["kind"] for row in points] == ["candidate", "poi"]
+
+
+def test_api_client_creates_run_and_downloads_report() -> None:
+    run = completed_run()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/site-selection/runs":
+            assert request.headers["Idempotency-Key"] == "fixture-key"
+            return httpx.Response(201, json=run.model_dump(mode="json"))
+        if request.url.path.endswith("/report"):
+            return httpx.Response(
+                200,
+                content=b"PK-fixture",
+                headers={
+                    "content-type": (
+                        "application/vnd.openxmlformats-officedocument."
+                        "wordprocessingml.document"
+                    )
+                },
+            )
+        raise AssertionError(request.url)
+
+    client = SiteSelectionAPIClient(
+        "http://api.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    created = client.create_run({}, idempotency_key="fixture-key")
+    report = client.download_report(created.report_url)
+
+    assert created.run_id == "run-workbench-001"
+    assert report == b"PK-fixture"
+
+
+def test_api_client_default_timeout_covers_fixture_llm_budget() -> None:
+    client = SiteSelectionAPIClient("http://api.test")
+
+    assert client.timeout_seconds == 90
+
+
+def test_api_client_builds_browser_accessible_report_url() -> None:
+    client = SiteSelectionAPIClient("http://localhost:8000")
+
+    assert client.absolute_url("/site-selection/runs/run-001/report") == (
+        "http://localhost:8000/site-selection/runs/run-001/report"
+    )
+
+
+def test_api_client_maps_structured_error_without_leaking_body() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503,
+            json={
+                "detail": {
+                    "code": "runtime_unavailable",
+                    "message": "运行时尚未配置",
+                    "internal": "secret-token",
+                }
+            },
+        )
+
+    client = SiteSelectionAPIClient(
+        "http://api.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(SiteSelectionAPIError) as captured:
+        client.create_run({}, idempotency_key="fixture-key")
+
+    assert captured.value.status_code == 503
+    assert captured.value.code == "runtime_unavailable"
+    assert str(captured.value) == "运行时尚未配置"
+    assert "secret-token" not in str(captured.value)
+
+
+def test_workbench_entrypoint_bootstraps_project_root_before_package_import() -> None:
+    project_root = Path(__file__).parents[1]
+    entrypoint = project_root / "workbench" / "app.py"
+    source = entrypoint.read_text(encoding="utf-8")
+
+    assert source.index("sys.path.insert") < source.index(
+        "from workbench.site_selection_client"
+    )
+
+    bootstrap_source = source.split(
+        "from workbench.site_selection_client", maxsplit=1
+    )[0]
+    original_path = sys.path.copy()
+    try:
+        sys.path[:] = [str(entrypoint.parent), str(project_root), *sys.path]
+        exec(
+            compile(bootstrap_source, str(entrypoint), "exec"),
+            {"__file__": str(entrypoint)},
+        )
+        assert sys.path[0] == str(project_root)
+    finally:
+        sys.path[:] = original_path

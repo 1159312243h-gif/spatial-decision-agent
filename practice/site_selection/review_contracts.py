@@ -43,6 +43,12 @@ class EvidenceReviewReport(BaseModel):
             issue.severity is ReviewIssueSeverity.BLOCKER
             for issue in self.issues
         )
+        has_warning = any(
+            issue.severity is ReviewIssueSeverity.WARNING
+            for issue in self.issues
+        )
         if (self.status is EvidenceReviewStatus.BLOCKED) != has_blocker:
             raise ValueError("证据审查状态必须与 blocker 一致")
+        if self.requires_human_review != has_warning:
+            raise ValueError("human review requirement must match warning issues")
         return self

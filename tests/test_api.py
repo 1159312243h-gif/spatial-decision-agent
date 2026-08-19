@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, create_app
 
 
 client = TestClient(app)
@@ -33,6 +33,17 @@ def test_health_success() -> None:
         "status": "ok",
         "version": "0.1.0",
     }
+
+
+def test_application_closes_configured_runtime_resource() -> None:
+    calls = []
+    application = create_app(resource_closer=lambda: calls.append("closed"))
+
+    with TestClient(application) as runtime_client:
+        assert runtime_client.get("/health").status_code == 200
+        assert calls == []
+
+    assert calls == ["closed"]
 
 
 def test_create_document_success() -> None:

@@ -1,0 +1,90 @@
+{
+  "is_fixture": true,
+  "version": "fixture-2026.08.24.1",
+  "updated_at": "2026-08-24T12:00:00Z",
+  "crs": "EPSG:32651",
+  "projects": [
+    {
+      "project_id": "fixture-shopping-mall",
+      "project_type": "shopping_mall",
+      "name": "合成商场选址演示"
+    },
+    {
+      "project_id": "fixture-logistics-park",
+      "project_type": "logistics_park",
+      "name": "合成物流园选址演示"
+    }
+  ],
+  "layers": [
+    {
+      "layer_id": "demo-mall-candidates",
+      "project_id": "fixture-shopping-mall",
+      "name": "合成商场候选地",
+      "layer_type": "candidate_parcel",
+      "source_id_field": "parcel_id",
+      "required_fields": ["parcel_id", "land_use"],
+      "features": [
+        {
+          "source_feature_id": "MALL-A01",
+          "properties": {"parcel_id": "MALL-A01", "land_use": "fixture-commercial"},
+          "geometry": {"type": "Polygon", "coordinates": [[[354230.604, 3456051.065], [354330.604, 3456051.065], [354330.604, 3456151.065], [354230.604, 3456151.065], [354230.604, 3456051.065]]]}
+        },
+        {
+          "source_feature_id": "MALL-A02",
+          "properties": {"parcel_id": "MALL-A02", "land_use": "fixture-commercial"},
+          "geometry": {"type": "Polygon", "coordinates": [[[355656.982, 3456585.612], [355776.982, 3456585.612], [355776.982, 3456685.612], [355656.982, 3456685.612], [355656.982, 3456585.612]]]}
+        }
+      ]
+    },
+    {
+      "layer_id": "demo-mall-constraints",
+      "project_id": "fixture-shopping-mall",
+      "name": "合成生态观察图层",
+      "layer_type": "ecological_protection",
+      "source_id_field": "constraint_id",
+      "required_fields": ["constraint_id", "level"],
+      "features": [
+        {
+          "source_feature_id": "MALL-ECO-01",
+          "properties": {"constraint_id": "MALL-ECO-01", "level": "fixture-review"},
+          "geometry": {"type": "Point", "coordinates": [354280.604, 3456101.065]}
+        }
+      ]
+    },
+    {
+      "layer_id": "demo-logistics-candidates",
+      "project_id": "fixture-logistics-park",
+      "name": "合成物流园候选地",
+      "layer_type": "candidate_parcel",
+      "source_id_field": "parcel_id",
+      "required_fields": ["parcel_id", "land_use"],
+      "features": [
+        {
+          "source_feature_id": "LOG-A01",
+          "properties": {"parcel_id": "LOG-A01", "land_use": "fixture-logistics"},
+          "geometry": {"type": "Polygon", "coordinates": [[[358983.029, 3457094.653], [359133.029, 3457094.653], [359133.029, 3457194.653], [358983.029, 3457194.653], [358983.029, 3457094.653]]]}
+        },
+        {
+          "source_feature_id": "LOG-A02",
+          "properties": {"parcel_id": "LOG-A02", "land_use": "fixture-logistics"},
+          "geometry": {"type": "Polygon", "coordinates": [[[362799.331, 3458706.981], [362979.331, 3458706.981], [362979.331, 3458806.981], [362799.331, 3458806.981], [362799.331, 3458706.981]]]}
+        }
+      ]
+    },
+    {
+      "layer_id": "demo-logistics-constraints",
+      "project_id": "fixture-logistics-park",
+      "name": "合成敏感目标观察图层",
+      "layer_type": "sensitive_receptor",
+      "source_id_field": "constraint_id",
+      "required_fields": ["constraint_id", "level"],
+      "features": [
+        {
+          "source_feature_id": "LOG-SENSITIVE-01",
+          "properties": {"constraint_id": "LOG-SENSITIVE-01", "level": "fixture-review"},
+          "geometry": {"type": "Point", "coordinates": [362889.331, 3458756.981]}
+        }
+      ]
+    }
+  ]
+}

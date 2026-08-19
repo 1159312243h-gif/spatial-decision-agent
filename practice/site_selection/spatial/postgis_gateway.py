@@ -5,6 +5,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 import geopandas as gpd
+from sqlalchemy import text
 
 from ..domain import DatasetManifest, DatasetSource
 from .gateway import SpatialDatasetAccessError
@@ -12,6 +13,22 @@ from .gateway import SpatialDatasetAccessError
 
 _SQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 PostGISReader = Callable[..., gpd.GeoDataFrame]
+
+
+_STORED_LAYER_SQL = text(
+    """
+    SELECT
+        feature.source_feature_id,
+        feature.properties,
+        ST_AsBinary(feature.geometry) AS geometry,
+        layer.normalized_crs
+    FROM site_selection.spatial_features AS feature
+    INNER JOIN site_selection.spatial_layers AS layer
+        ON layer.layer_id = feature.layer_id
+    WHERE layer.layer_id = :layer_id
+    ORDER BY feature.feature_id
+    """
+)
 
 
 class PostGISSpatialDatasetGateway:
@@ -98,6 +115,99 @@ class PostGISSpatialDatasetGateway:
                 f"schema_not_allowed: dataset_id={manifest.dataset_id}"
             )
         return schema, table
+
+
+class StoredPostGISSpatialDatasetGateway:
+    """Load manifested layers from the normalized site-selection schema."""
+
+    def __init__(
+        self,
+        connection: Any,
+        *,
+        reader: PostGISReader | None = None,
+    ) -> None:
+        if connection is None:
+            raise ValueError("Stored PostGIS Gateway 必须配置数据库连接")
+        self._connection = connection
+        self._reader = reader or gpd.read_postgis
+
+    def load(self, manifest: DatasetManifest) -> gpd.GeoDataFrame:
+        if manifest.source is not DatasetSource.POSTGIS:
+            raise SpatialDatasetAccessError(
+                f"unsupported_source: dataset_id={manifest.dataset_id}"
+            )
+
+        try:
+            stored = self._reader(
+                _STORED_LAYER_SQL,
+                self._connection,
+                geom_col="geometry",
+                params={"layer_id": manifest.location},
+            )
+        except Exception as exc:
+            raise SpatialDatasetAccessError(
+                "stored_postgis_read_failed: "
+                f"dataset_id={manifest.dataset_id}, "
+                f"error_type={type(exc).__name__}"
+            ) from exc
+
+        if not isinstance(stored, gpd.GeoDataFrame):
+            raise SpatialDatasetAccessError(
+                f"stored_postgis_invalid_result: dataset_id={manifest.dataset_id}"
+            )
+        if stored.empty:
+            raise SpatialDatasetAccessError(
+                f"stored_postgis_layer_empty: dataset_id={manifest.dataset_id}"
+            )
+
+        try:
+            frame = _expand_stored_properties(stored, manifest)
+            normalized_crs_values = {
+                str(value).strip()
+                for value in frame.pop("normalized_crs").tolist()
+                if str(value).strip()
+            }
+            if len(normalized_crs_values) != 1:
+                raise ValueError("stored layer has inconsistent normalized CRS")
+            normalized_crs = normalized_crs_values.pop()
+            frame = frame.set_crs(normalized_crs, allow_override=True)
+            if manifest.crs is not None and str(frame.crs) != manifest.crs:
+                frame = frame.to_crs(manifest.crs)
+        except Exception as exc:
+            raise SpatialDatasetAccessError(
+                "stored_postgis_invalid_result: "
+                f"dataset_id={manifest.dataset_id}, "
+                f"error_type={type(exc).__name__}"
+            ) from exc
+        return frame.copy(deep=True)
+
+
+def _expand_stored_properties(
+    stored: gpd.GeoDataFrame,
+    manifest: DatasetManifest,
+) -> gpd.GeoDataFrame:
+    required = {"source_feature_id", "properties", "geometry", "normalized_crs"}
+    if not required.issubset(stored.columns):
+        missing = sorted(required - set(stored.columns))
+        raise ValueError("stored layer result is missing columns: " + ", ".join(missing))
+
+    records: list[dict[str, Any]] = []
+    geometries = []
+    for _, row in stored.iterrows():
+        properties = row["properties"]
+        if not isinstance(properties, dict):
+            raise ValueError("stored feature properties must be an object")
+        record = dict(properties)
+        record.setdefault("source_feature_id", str(row["source_feature_id"]))
+        record["normalized_crs"] = row["normalized_crs"]
+        records.append(record)
+        geometries.append(row["geometry"])
+
+    return gpd.GeoDataFrame(
+        records,
+        geometry=geometries,
+        crs=stored.crs,
+    )
 
 
 def _require_identifier(value: str, *, field: str) -> None:

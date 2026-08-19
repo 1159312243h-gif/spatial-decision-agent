@@ -37,6 +37,10 @@ class POIResponseError(POIAdapterError):
     """Raised when an upstream payload violates the reviewed contract."""
 
 
+class POICircuitOpenError(POIAvailabilityError):
+    """Raised while a provider circuit is open after repeated failures."""
+
+
 class HTTPResponse(Protocol):
     status_code: int
 
@@ -110,6 +114,95 @@ class FixedIntervalRateLimiter:
                 self._sleep(delay)
                 now = self._monotonic()
             self._next_allowed_at = max(now, self._next_allowed_at) + self._interval
+
+
+class RetryingCircuitBreakerPOIAdapter:
+    """Bound retries and temporarily isolate a repeatedly failing POI source."""
+
+    def __init__(
+        self,
+        primary: POISourceAdapter,
+        *,
+        max_attempts: int = 2,
+        failure_threshold: int = 2,
+        recovery_timeout_seconds: float = 30,
+        base_backoff_seconds: float = 0.1,
+        max_backoff_seconds: float = 1,
+        monotonic: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        if primary is None:
+            raise ValueError("reliable POI adapter requires a primary adapter")
+        if max_attempts <= 0 or failure_threshold <= 0:
+            raise ValueError("retry attempts and failure threshold must be positive")
+        if recovery_timeout_seconds <= 0:
+            raise ValueError("circuit recovery timeout must be positive")
+        if base_backoff_seconds < 0 or max_backoff_seconds < base_backoff_seconds:
+            raise ValueError("retry backoff bounds are invalid")
+        self._primary = primary
+        self._max_attempts = max_attempts
+        self._failure_threshold = failure_threshold
+        self._recovery_timeout_seconds = recovery_timeout_seconds
+        self._base_backoff_seconds = base_backoff_seconds
+        self._max_backoff_seconds = max_backoff_seconds
+        self._monotonic = monotonic
+        self._sleep = sleep
+        self._consecutive_failures = 0
+        self._open_until = 0.0
+        self._lock = threading.Lock()
+
+    @property
+    def provider(self) -> POIProvider:
+        return _provider_of(self._primary)
+
+    @property
+    def cache_token(self) -> str:
+        primary = getattr(self._primary, "cache_token", type(self._primary).__name__)
+        return (
+            f"reliable:{primary}:attempts={self._max_attempts}:"
+            f"threshold={self._failure_threshold}"
+        )
+
+    @property
+    def circuit_open(self) -> bool:
+        with self._lock:
+            return self._monotonic() < self._open_until
+
+    def search(self, query: POIQuery) -> POIFeatureSet:
+        with self._lock:
+            if self._monotonic() < self._open_until:
+                raise POICircuitOpenError("POI provider circuit is open")
+
+        for attempt in range(1, self._max_attempts + 1):
+            try:
+                result = self._primary.search(query)
+            except POIAvailabilityError:
+                if attempt < self._max_attempts:
+                    delay = min(
+                        self._base_backoff_seconds * (2 ** (attempt - 1)),
+                        self._max_backoff_seconds,
+                    )
+                    if delay:
+                        self._sleep(delay)
+                    continue
+                self._record_failure()
+                raise
+            self._record_success()
+            return result
+        raise RuntimeError("unreachable retry state")
+
+    def _record_success(self) -> None:
+        with self._lock:
+            self._consecutive_failures = 0
+            self._open_until = 0.0
+
+    def _record_failure(self) -> None:
+        with self._lock:
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= self._failure_threshold:
+                self._open_until = (
+                    self._monotonic() + self._recovery_timeout_seconds
+                )
 
 
 class GCJ02CoordinateTransformer:
@@ -559,6 +652,9 @@ class FallbackPOIAdapter:
 
 
 def _provider_of(adapter: POISourceAdapter) -> POIProvider:
+    provider = getattr(adapter, "provider", None)
+    if isinstance(provider, POIProvider):
+        return provider
     if isinstance(adapter, AmapPOIAdapter):
         return POIProvider.AMAP
     if isinstance(adapter, OverpassPOIAdapter):

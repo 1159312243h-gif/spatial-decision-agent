@@ -1,0 +1,26 @@
+pack_id: fixture-logistics-park-rules
+version: fixture-2026.08.1
+is_fixture: true
+applicable_project_types:
+  - logistics_park
+rules:
+  - rule_id: FIXTURE-RULE-SENSITIVE-001
+    name: 合成测试敏感目标人工复核规则
+    version: fixture-1.0
+    applicable_project_types:
+      - logistics_park
+    constraint_id: sensitive-receptor-observation
+    expected_triggered: true
+    outcome: review_required
+    message: 命中合成测试敏感目标空间条件，进入人工复核
+    policy:
+      policy_id: FIXTURE-POLICY-LOGISTICS-001
+      title: 合成测试物流设施分析指引
+      issuing_authority: 测试机构
+      document_number: FIXTURE-LOGISTICS-001
+      clause: 第六条（合成测试）
+      version: fixture-1.0
+      jurisdiction: 测试行政区
+      source_uri: fixture://policies/logistics-access
+    valid_from: 2026-01-01
+    enabled: true

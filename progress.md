@@ -1068,3 +1068,29 @@
 - 全量回归 `373 passed`；报告可访问性审计高/中/低问题均为 0。
 - PostGIS 查询一致性真实烟测已通过。
 - Redis 运行态真实烟测已通过；当前环境缺少 LibreOffice，Word 报告尚未完成 PNG 视觉验收。
+### 2026-08-25：运行可靠性、人工复核与阶段可观测性
+
+- 新增结构化运行阶段 trace，覆盖 workflow、human_review、explanation、report 和 total，仅保留耗时、状态与脱敏异常类型。
+- 工作流返回值重新经过 `AgentState` 校验；非法返回、缺失 Evidence Review 或 blocked 审查均写入显式失败状态，不残留 running。
+- 强化 Evidence Review 契约：`requires_human_review` 必须与 warning 一致，blocker 不得降级成人工确认。
+- 新增 `not_required / pending / acknowledged` 人工复核状态和确认 API；确认只表示证据已阅，不代表合规批准或选址推荐。
+- 人工确认写入 Redis 审计事件，重复确认幂等且不覆盖首次备注。
+- 新增有界重试、指数退避和 circuit breaker POI 包装器；只重试可用性错误，不隐藏畸形响应。
+- 在线 POI 不可用时可沿用显式 Fixture 回退，并通过 `fallback_from/fallback_reason` 和 `poi_fixture_fallback` warning 留痕。
+- Streamlit 工作台增加待复核提示、确认已阅操作、非批准边界说明和阶段耗时表。
+- 新增四类端到端可靠性场景以及阻断审查、非法工作流返回、幂等确认、熔断恢复等测试。
+- Day 25 定向测试 `45 passed`，主仓库项目 `.venv` 完整回归 `425 passed in 7.23s`。
+- Compose 五服务启动成功；双项目类型、四候选地、两报告和六 MCP 工具 smoke 通过。
+- 浏览器实测待复核提示、五阶段 trace、确认已阅和“非合规批准”边界均正常。
+- 当前未自动提交。
+- Fixture POI 仍只用于稳定演示，不作为现实选址样本；后续继续推进真实 POI 覆盖与数据质量治理。
+### 2026-08-26：冻结评测、性能基线与交付文档
+
+- 冻结 24 条选址评测，覆盖 4 条前置检查、6 条空间校验、3 条 Fixture POI、4 条 POI 故障、3 条政策 RAG 和 4 条完整工作流。
+- 增加批量评测器与机器可读 JSON 结果，记录期望、实际、耗时和异常类型。
+- 增加本机性能脚本，记录 GIS、POI、RAG 和完整评测批次的样本数、中位数及运行环境。
+- 重写项目 README，补充启动、API、MCP、测试、Fixture 边界和安全约束。
+- 新增架构说明、数据字典、Bad Case 报告和性能测量协议。
+- 明确 Fixture POI 不具备真实选址参考性，人工确认不是合规批准，GCJ-02 不等于 EPSG:4326。
+- 定向测试 `5 passed in 2.39s`，冻结评测 `24/24` 通过，全量回归 `430 passed in 8.39s`。
+- 本机 Fixture 性能中位数：GIS `0.135ms`、POI `0.031ms`、RAG `0.033ms`、完整评测批次 `88.798ms`；这些数字不是生产 Benchmark。
