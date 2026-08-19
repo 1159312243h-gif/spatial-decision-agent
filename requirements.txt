@@ -10,3 +10,4 @@ pyproj
 shapely
 sqlalchemy
 psycopg[binary]
+redis

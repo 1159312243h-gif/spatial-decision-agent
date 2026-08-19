@@ -21,6 +21,7 @@ from .gateway import (
     SpatialDatasetNotFoundError,
     collect_gis_evidence,
 )
+from .hashing import stable_spatial_hash
 from .postgis_gateway import PostGISSpatialDatasetGateway
 from .validate import (
     SpatialValidationCode,
@@ -49,5 +50,6 @@ __all__ = [
     "parse_crs",
     "run_gis_analysis",
     "run_spatial_constraint_analysis",
+    "stable_spatial_hash",
     "validate_spatial_dataset",
 ]

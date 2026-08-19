@@ -44,6 +44,7 @@ def test_valid_projected_dataset_passes() -> None:
 
     assert result.crs == "EPSG:32651"
     assert result.is_projected is True
+    assert result.linear_unit == "metre"
     assert result.feature_count == 1
     assert result.geometry_column == "geometry"
     assert result.geometry_types == ["Polygon"]
@@ -88,6 +89,18 @@ def test_geographic_crs_can_pass_a_non_metric_gate() -> None:
     )
 
     assert result.is_projected is False
+
+
+def test_projected_crs_with_non_metre_units_is_rejected() -> None:
+    frame = valid_frame(crs=None).set_crs("EPSG:2263", allow_override=True)
+
+    assert_error(
+        SpatialValidationCode.CRS_NOT_METRIC,
+        lambda: validate_spatial_dataset(
+            frame,
+            required_fields=REQUIRED_FIELDS,
+        ),
+    )
 
 
 def test_missing_required_fields_are_rejected() -> None:

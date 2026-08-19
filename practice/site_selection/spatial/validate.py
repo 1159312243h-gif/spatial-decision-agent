@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import StrEnum
+from math import isclose
 from typing import Any
 
 import geopandas as gpd
@@ -18,6 +19,7 @@ class SpatialValidationCode(StrEnum):
     INVALID_CRS = "invalid_crs"
     CRS_MISMATCH = "crs_mismatch"
     CRS_NOT_PROJECTED = "crs_not_projected"
+    CRS_NOT_METRIC = "crs_not_metric"
     NULL_GEOMETRY = "null_geometry"
     EMPTY_GEOMETRY = "empty_geometry"
     INVALID_GEOMETRY = "invalid_geometry"
@@ -47,6 +49,7 @@ class SpatialValidationResult(BaseModel):
 
     crs: str = Field(min_length=1)
     is_projected: bool
+    linear_unit: str | None = None
     feature_count: int = Field(gt=0)
     geometry_column: str = Field(min_length=1)
     geometry_types: list[str] = Field(min_length=1)
@@ -75,6 +78,7 @@ def validate_spatial_dataset(
     *,
     required_fields: Iterable[str],
     require_projected: bool = True,
+    require_metric_units: bool = True,
     expected_crs: Any | None = None,
 ) -> SpatialValidationResult:
     """Validate schema, CRS, and geometry before deterministic GIS analysis."""
@@ -127,6 +131,12 @@ def validate_spatial_dataset(
             SpatialValidationCode.CRS_NOT_PROJECTED,
             "距离或面积分析必须使用投影坐标系",
         )
+    linear_unit = _linear_unit_name(crs)
+    if require_metric_units and crs.is_projected and not _uses_metre(crs):
+        raise SpatialValidationError(
+            SpatialValidationCode.CRS_NOT_METRIC,
+            "距离或面积分析必须使用以米为单位的投影坐标系",
+        )
 
     null_mask = geometry.isna()
     if null_mask.any():
@@ -159,8 +169,26 @@ def validate_spatial_dataset(
     return SpatialValidationResult(
         crs=crs.to_string(),
         is_projected=crs.is_projected,
+        linear_unit=linear_unit,
         feature_count=len(frame),
         geometry_column=geometry.name,
         geometry_types=geometry_types,
         checked_fields=checked_fields,
+    )
+
+
+def _linear_unit_name(crs: CRS) -> str | None:
+    units = [axis.unit_name for axis in crs.axis_info if axis.unit_name]
+    return units[0] if units else None
+
+
+def _uses_metre(crs: CRS) -> bool:
+    axes = [axis for axis in crs.axis_info if axis.unit_name]
+    if not axes:
+        return False
+    return all(
+        axis.unit_conversion_factor is not None
+        and isclose(float(axis.unit_conversion_factor), 1.0, abs_tol=1e-12)
+        and axis.unit_name.lower() in {"metre", "meter", "metres", "meters"}
+        for axis in axes
     )

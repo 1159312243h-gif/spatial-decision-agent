@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+from collections import deque
+from typing import Any
+
+
+class FakeResult:
+    def __init__(self, rows: list[dict[str, Any]] | None = None) -> None:
+        self._rows = rows or []
+
+    def mappings(self) -> FakeResult:
+        return self
+
+    def first(self) -> dict[str, Any] | None:
+        return self._rows[0] if self._rows else None
+
+    def all(self) -> list[dict[str, Any]]:
+        return list(self._rows)
+
+
+class FakeConnection:
+    def __init__(self, results: list[FakeResult] | None = None) -> None:
+        self.calls: list[tuple[str, Any]] = []
+        self._results = deque(results or [])
+
+    def execute(self, statement: Any, parameters: Any = None) -> FakeResult:
+        self.calls.append((str(statement), parameters))
+        return self._results.popleft() if self._results else FakeResult()
+
+
+class FakeRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+        self.expirations: dict[str, int] = {}
+
+    def set(self, name: str, value: str, *, ex: int) -> bool:
+        self.values[name] = value
+        self.expirations[name] = ex
+        return True
+
+    def get(self, name: str) -> bytes | None:
+        value = self.values.get(name)
+        return value.encode("utf-8") if value is not None else None
+
+    def delete(self, name: str) -> int:
+        existed = name in self.values
+        self.values.pop(name, None)
+        self.expirations.pop(name, None)
+        return int(existed)
+
+    def ttl(self, name: str) -> int:
+        return self.expirations.get(name, -2)

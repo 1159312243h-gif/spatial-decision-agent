@@ -85,6 +85,12 @@ from .poi_adapters import (
     POISourceAdapter,
     haversine_distance_m,
 )
+from .poi_normalizer import (
+    NormalizedPOI,
+    POINormalizer,
+    RawPOI,
+    UnsupportedPOICRSError,
+)
 from .preflight import (
     PreflightDecision,
     PreflightStatus,
@@ -137,6 +143,7 @@ __all__ = [
     "GISEvidence",
     "MockPOIGateway",
     "MissingMetricPolicy",
+    "NormalizedPOI",
     "POICategoryConfig",
     "POIGroupScore",
     "POIGroupScoringConfig",
@@ -154,6 +161,7 @@ __all__ = [
     "POIScoringConfig",
     "POIScoringError",
     "POISourceAdapter",
+    "POINormalizer",
     "PROJECT_PROFILES",
     "PolicyEvidence",
     "PolicyFinding",
@@ -180,6 +188,7 @@ __all__ = [
     "ReviewAgent",
     "ReviewAgentInput",
     "ReviewAgentOutput",
+    "RawPOI",
     "ScoreDirection",
     "SiteSelectionWorkflowDependencies",
     "SpatialConstraintRelation",
@@ -189,6 +198,7 @@ __all__ = [
     "SpatialAgentOutput",
     "SiteSelectionDraft",
     "UnsupportedProjectTypeError",
+    "UnsupportedPOICRSError",
     "WorkflowEvidenceBlockedError",
     "assemble_analysis_results",
     "build_poi_queries",

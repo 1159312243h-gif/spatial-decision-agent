@@ -1027,3 +1027,30 @@
 - 为正式 PostGIS 数据集定义受审核的表清单、schema 白名单和只读连接权限
 - 在密钥管理和网络方案明确后接入真实 POI Adapter
 - 明确生产数据、评分配置和政策规则的来源、版本、审核与发布流程
+
+### 空间数据校验、PostGIS 持久化与 Redis 运行状态
+
+- 空间质量门新增米制投影单位检查，缺少 CRS、空几何、无效几何和非米制投影均被结构化阻断
+- 新增稳定 SHA-256 空间数据哈希，哈希包含 CRS、字段、属性和标准化几何，且不受行顺序和 DataFrame 索引影响
+- 新增 `RawPOI`、`NormalizedPOI` 和 `POINormalizer`，统一来源、类别、地址、坐标系和带时区抓取时间
+- 明确拒绝把 GCJ-02 直接标记为 EPSG:4326；当前固定数据统一使用 WGS84
+- 新增版本化 PostGIS 迁移 `001_initial`，建立 `projects`、`spatial_layers`、`spatial_features` 和 `pois`
+- Geometry 字段固定 SRID 4326，空间要素和 POI 均建立 GIST 索引
+- 新增参数化 `PostgresSpatialRepository`，支持项目 upsert/读取、图层校验/哈希/重投影/整体替换和要素读取
+- 新增参数化 `PostgresPOIRepository`，支持批量 upsert、按 `source + source_id` 去重读取和米制半径查询
+- 新增 `RedisRunStateStore`，使用安全 namespace 保存结构化运行状态，校验 failed/error 一致性并显式设置 TTL
+- Repository 通过依赖注入接收连接或客户端，不读取环境变量、不自行提交事务
+- 新增数据库迁移、PostGIS Repository 和 Redis 状态冒烟脚本
+- 定向存储测试 `39 passed`
+- 真实 PostGIS 迁移 `PostGIS migration OK: version=001_initial`
+- 真实存储冒烟 `features=1, pois=1, deduplicated=true`
+- 真实 Redis 冒烟 `namespace=site_selection:smoke, ttl=300`
+- 项目全量回归 `296 passed, 1 existing warning`
+- 本阶段未接入高德或 OSM，未新增生产评分阈值、政策规则或自动推荐结论
+
+#### 下一步
+
+- 将 PostGIS Repository 和 Redis 状态存储注入选址应用服务与工作流运行边界
+- 定义一次分析运行的合法状态转换、失败恢复和长期审计记录
+- 在线 POI Adapter 接入前实现并审核 GCJ-02 真实转换和数据来源治理
+- 生产部署前补充迁移工具、最小数据库权限、备份恢复、监控和密钥管理
