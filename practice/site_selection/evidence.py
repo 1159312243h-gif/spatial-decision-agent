@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .agent_orchestration import AgentExecutionPlan, AgentStepTrace
 from .constraints import ConstraintObservation
 from .domain import DatasetManifest, NonEmptyString, ProjectRequest, ProjectType
 from .poi import POIFeatureSet, POIQuery
@@ -254,6 +255,8 @@ class AgentState(BaseModel):
     results: list[AnalysisResult] = Field(default_factory=list)
     comparison_report: CandidateComparisonReport | None = None
     evidence_review_report: EvidenceReviewReport | None = None
+    execution_plan: AgentExecutionPlan | None = None
+    agent_trace: list[AgentStepTrace] = Field(default_factory=list)
     errors: list[NonEmptyString] = Field(default_factory=list)
     status: AnalysisStatus = AnalysisStatus.INTAKE
 
@@ -300,4 +303,17 @@ class AgentState(BaseModel):
             and self.evidence_review_report.request_id != self.request.request_id
         ):
             raise ValueError("证据审查报告 request_id 必须与请求一致")
+        if self.agent_trace and self.execution_plan is None:
+            raise ValueError("Agent trace 必须绑定版本化执行计划")
+        if self.execution_plan is not None:
+            planned = {step.node_id for step in self.execution_plan.steps}
+            traced = [trace.node_id for trace in self.agent_trace]
+            if len(traced) != len(set(traced)):
+                raise ValueError("Agent trace 不能包含重复节点")
+            unknown = set(traced) - planned
+            if unknown:
+                raise ValueError(
+                    "Agent trace 引用了计划外节点："
+                    + ", ".join(sorted(unknown))
+                )
         return self

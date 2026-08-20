@@ -28,6 +28,18 @@ def test_parallel_workflow_matches_auditable_business_result() -> None:
     assert result.poi_evidence[0].score_report is not None
     assert result.policy_evidence[0].rule_findings
     assert result.comparison_report is not None
+    assert result.execution_plan is not None
+    assert [trace.node_id for trace in result.agent_trace] == [
+        "intake",
+        "poi_evidence",
+        "spatial_evidence",
+        "policy_rules",
+        "merge_gate",
+        "review",
+    ]
+    assert {trace.status.value for trace in result.agent_trace} == {
+        "succeeded"
+    }
 
 
 def test_poi_and_spatial_branches_start_concurrently() -> None:
@@ -82,3 +94,20 @@ def test_parallel_spatial_failure_is_sanitized_and_stops_policy() -> None:
     assert result.results == []
     assert "spatial 失败" in result.errors[0]
     assert "missing_crs" in result.errors[0]
+    trace_statuses = {
+        trace.node_id: trace.status.value for trace in result.agent_trace
+    }
+    assert trace_statuses == {
+        "intake": "succeeded",
+        "poi_evidence": "succeeded",
+        "spatial_evidence": "failed",
+        "policy_rules": "skipped",
+        "merge_gate": "failed",
+        "review": "skipped",
+    }
+    spatial_trace = next(
+        trace
+        for trace in result.agent_trace
+        if trace.node_id == "spatial_evidence"
+    )
+    assert spatial_trace.error_type == "SpatialAgentBlockedError"

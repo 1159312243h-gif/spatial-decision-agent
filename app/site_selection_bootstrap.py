@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from math import pi
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -23,6 +24,10 @@ from app.services.site_selection_queue import (
     RQQueueSettings,
     RQSiteSelectionJobQueue,
     SiteSelectionJobQueue,
+)
+from app.services.site_selection_poi_provider import (
+    ConfiguredPOIProvider,
+    build_configured_poi_provider,
 )
 from app.services.site_selection_service import (
     SiteSelectionRuntime,
@@ -49,7 +54,11 @@ from practice.site_selection import (
 )
 from practice.site_selection.mcp_server import create_site_selection_mcp_server
 from practice.site_selection.mcp_tools import create_site_selection_tool_registry
-from practice.site_selection.poi_adapters import FixturePOIAdapter, FixturePOIDataset
+from practice.site_selection.poi_adapters import (
+    FixturePOIAdapter,
+    FixturePOIDataset,
+    POISourceAdapter,
+)
 from practice.site_selection.poi_normalizer import POINormalizer, RawPOI
 from practice.site_selection.policy_rag import (
     PolicyHybridRetriever,
@@ -187,6 +196,7 @@ class SiteSelectionBootstrap:
     redis_client: Any
     explainer: SiteSelectionEvidenceExplainer | None = None
     job_queue: SiteSelectionJobQueue | None = None
+    poi_provider: ConfiguredPOIProvider | None = None
     run_mode: str = "sync"
     _closed: bool = field(default=False, init=False, repr=False)
 
@@ -199,11 +209,15 @@ class SiteSelectionBootstrap:
                 self.job_queue.close()
         finally:
             try:
-                close = getattr(self.redis_client, "close", None)
-                if callable(close):
-                    close()
+                if self.poi_provider is not None:
+                    self.poi_provider.close()
             finally:
-                self.engine.dispose()
+                try:
+                    close = getattr(self.redis_client, "close", None)
+                    if callable(close):
+                        close()
+                finally:
+                    self.engine.dispose()
 
 
 def load_fixture_spatial_seed(
@@ -283,10 +297,13 @@ def build_fixture_runtime_registry(
     *,
     fixture_root: str | Path = FIXTURE_ROOT,
     spatial_gateway: Any | None = None,
+    poi_adapter: POISourceAdapter | None = None,
 ) -> SiteSelectionRuntimeRegistry:
     root = Path(fixture_root)
     spatial_seed = load_fixture_spatial_seed(root / "spatial_layers.json")
-    poi_adapter = FixturePOIAdapter.from_json(root / "poi.json")
+    active_poi_adapter = poi_adapter or FixturePOIAdapter.from_json(
+        root / "poi.json"
+    )
     gateway = spatial_gateway or StoredPostGISSpatialDatasetGateway(engine)
     layer_by_id = {layer.layer_id: layer for layer in spatial_seed.layers}
 
@@ -299,7 +316,7 @@ def build_fixture_runtime_registry(
             constraint_type=ConstraintLayerType.ECOLOGICAL_PROTECTION,
             rule_path=root / "rules.shopping_mall.yaml",
             gateway=gateway,
-            poi_adapter=poi_adapter,
+            poi_adapter=active_poi_adapter,
             spatial_seed=spatial_seed,
         ),
         ProjectType.LOGISTICS_PARK: _build_fixture_runtime(
@@ -310,7 +327,7 @@ def build_fixture_runtime_registry(
             constraint_type=ConstraintLayerType.SENSITIVE_RECEPTOR,
             rule_path=root / "rules.logistics_park.yaml",
             gateway=gateway,
-            poi_adapter=poi_adapter,
+            poi_adapter=active_poi_adapter,
             spatial_seed=spatial_seed,
         ),
     }
@@ -402,6 +419,7 @@ def build_site_selection_bootstrap_from_environment(
     )
     redis_client = None
     job_queue = None
+    configured_poi_provider = None
     try:
         migration_applier(engine)
         root = Path(fixture_root)
@@ -421,6 +439,12 @@ def build_site_selection_bootstrap_from_environment(
             idempotency_ttl_seconds=idempotency_ttl_seconds,
             poi_cache_ttl_seconds=poi_cache_ttl_seconds,
             event_ttl_seconds=event_ttl_seconds,
+        )
+        configured_poi_provider = build_configured_poi_provider(
+            values,
+            FixturePOIAdapter.from_json(root / "poi.json"),
+            cache_store=run_store,
+            engine=engine,
         )
         if run_mode == "async":
             queue_settings = RQQueueSettings(
@@ -452,6 +476,7 @@ def build_site_selection_bootstrap_from_environment(
             runtime_provider=build_fixture_runtime_registry(
                 engine,
                 fixture_root=root,
+                poi_adapter=configured_poi_provider.adapter,
             ),
             run_store=run_store,
             report_store=FileSystemSiteSelectionReportStore(report_dir),
@@ -464,10 +489,12 @@ def build_site_selection_bootstrap_from_environment(
             redis_client=redis_client,
             explainer=_build_optional_explainer(values),
             job_queue=job_queue,
+            poi_provider=configured_poi_provider,
             run_mode=run_mode,
         )
     except Exception as exc:
         _close_quietly(job_queue)
+        _close_quietly(configured_poi_provider)
         _close_quietly(redis_client)
         try:
             engine.dispose()
@@ -488,7 +515,7 @@ def _build_fixture_runtime(
     constraint_type: ConstraintLayerType,
     rule_path: Path,
     gateway: StoredPostGISSpatialDatasetGateway,
-    poi_adapter: FixturePOIAdapter,
+    poi_adapter: POISourceAdapter,
     spatial_seed: FixtureSpatialSeed,
 ) -> SiteSelectionRuntime:
     manifests = [
@@ -558,15 +585,7 @@ def _fixture_poi_scoring_config(project_type: ProjectType) -> POIScoringConfig:
                             else ScoreDirection.HIGHER_IS_BETTER
                         ),
                         lower_bound=0,
-                        upper_bound=(
-                            float(group.query_radius_m)
-                            if metric
-                            in {
-                                POIMetric.NEAREST_DISTANCE_M,
-                                POIMetric.AVERAGE_DISTANCE_M,
-                            }
-                            else 10.0
-                        ),
+                        upper_bound=_fixture_metric_upper_bound(group, metric),
                         weight=metric_weight,
                         missing_policy=MissingMetricPolicy.ZERO,
                     )
@@ -576,7 +595,7 @@ def _fixture_poi_scoring_config(project_type: ProjectType) -> POIScoringConfig:
         )
     return POIScoringConfig(
         project_type=project_type,
-        version="fixture-poi-score-2026.08.24.1",
+        version="fixture-poi-score-rich-v1",
         groups=groups,
     )
 
@@ -584,7 +603,7 @@ def _fixture_poi_scoring_config(project_type: ProjectType) -> POIScoringConfig:
 def _fixture_site_scoring_config(project_type: ProjectType) -> SiteScoringConfig:
     return SiteScoringConfig(
         project_type=project_type,
-        version="fixture-site-score-2026.08.24.1",
+        version="fixture-site-score-rich-v1",
         gis_weight=0.4,
         poi_weight=0.6,
         gis_metric_rules=[
@@ -592,12 +611,24 @@ def _fixture_site_scoring_config(project_type: ProjectType) -> SiteScoringConfig
                 metric_key="area_hectares",
                 direction=ScoreDirection.HIGHER_IS_BETTER,
                 lower_bound=0,
-                upper_bound=2,
+                upper_bound=(
+                    2 if project_type is ProjectType.SHOPPING_MALL else 5
+                ),
                 weight=1,
                 missing_policy=MissingMetricPolicy.BLOCK,
             )
         ],
     )
+
+
+def _fixture_metric_upper_bound(group: Any, metric: POIMetric) -> float:
+    target_count = 20.0
+    if metric is POIMetric.COUNT:
+        return target_count
+    if metric is POIMetric.DENSITY_PER_SQ_KM:
+        radius_km = group.query_radius_m / 1_000
+        return target_count / (pi * radius_km * radius_km)
+    return float(group.query_radius_m)
 
 
 def _required_environment(values: Mapping[str, str], name: str) -> str:

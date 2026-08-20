@@ -27,6 +27,15 @@ def test_compose_explicitly_wires_api_mcp_workbench_and_storage() -> None:
     }
     assert services["api"]["environment"]["SITE_SELECTION_RUNTIME_MODE"] == "fixture"
     assert services["api"]["environment"]["SITE_SELECTION_RUN_MODE"] == "async"
+    assert services["api"]["environment"]["SITE_SELECTION_POI_PROVIDER"] == (
+        "${SITE_SELECTION_POI_PROVIDER:-fixture}"
+    )
+    assert services["worker"]["environment"]["SITE_SELECTION_POI_PROVIDER"] == (
+        "${SITE_SELECTION_POI_PROVIDER:-fixture}"
+    )
+    assert services["api"]["environment"]["AMAP_API_KEY"] == (
+        "${AMAP_API_KEY:-}"
+    )
     assert services["worker"]["command"][-1] == (
         "scripts/run_site_selection_worker.py"
     )

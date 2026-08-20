@@ -89,8 +89,13 @@ def query(
     )
 
 
-def amap_payload(items) -> dict:
-    return {"status": "1", "infocode": "10000", "pois": items}
+def amap_payload(items, *, count: int | None = None) -> dict:
+    return {
+        "status": "1",
+        "infocode": "10000",
+        "count": str(len(items) if count is None else count),
+        "pois": items,
+    }
 
 
 def amap_item(index: int, longitude: float) -> dict:
@@ -152,6 +157,28 @@ def test_amap_empty_result_is_valid_and_does_not_invent_records() -> None:
 
     assert result.records == []
     assert result.source.record_count == 0
+
+
+def test_amap_exposes_provider_count_when_query_limit_truncates_results() -> None:
+    adapter = AmapPOIAdapter(
+        "test-api-key",
+        FakeHTTPClient(
+            [
+                FakeResponse(
+                    200,
+                    amap_payload([amap_item(1, 121.481)], count=2),
+                )
+            ]
+        ),
+        OffsetTransformer(),
+        clock=lambda: NOW,
+    )
+
+    result = adapter.search(query(limit=1))
+
+    assert len(result.records) == 1
+    assert result.source.available_record_count == 2
+    assert result.source.is_truncated is True
 
 
 def test_amap_maps_http_and_business_quota_to_rate_limit() -> None:
@@ -369,6 +396,45 @@ def test_overpass_rejects_unknown_category_before_http() -> None:
         adapter.search(query(categories=["未知类别"]))
 
     assert client.post_calls == []
+
+
+def test_overpass_reports_deduplicated_count_before_query_limit() -> None:
+    client = FakeHTTPClient(
+        [
+            FakeResponse(
+                200,
+                {
+                    "elements": [
+                        {
+                            "type": "node",
+                            "id": 1,
+                            "lat": 31.231,
+                            "lon": 121.471,
+                            "tags": {"name": "一号站", "railway": "station"},
+                        },
+                        {
+                            "type": "node",
+                            "id": 2,
+                            "lat": 31.232,
+                            "lon": 121.472,
+                            "tags": {"name": "二号站", "railway": "station"},
+                        },
+                    ]
+                },
+            )
+        ]
+    )
+    adapter = OverpassPOIAdapter(
+        client,
+        overpass_filters(),
+        clock=lambda: NOW,
+    )
+
+    result = adapter.search(query(limit=1))
+
+    assert len(result.records) == 1
+    assert result.source.available_record_count == 2
+    assert result.source.is_truncated is True
 
 
 def test_overpass_maps_429_to_rate_limit() -> None:

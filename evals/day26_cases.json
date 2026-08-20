@@ -3,9 +3,9 @@
   "version": "2026.08.26.1",
   "frozen_at": "2026-08-26T12:00:00Z",
   "fixture_versions": {
-    "poi": "fixture-2026.08.1",
+    "poi": "fixture-rich-v1",
     "policy": "fixture-2026.08.1",
-    "spatial": "fixture-2026.08.24.1"
+    "spatial": "fixture-rich-v1"
   },
   "notes": [
     "所有案例使用合成 Fixture，不代表生产数据覆盖率。",
@@ -55,8 +55,8 @@
     {"case_id": "GIS-004", "category": "spatial", "scenario": "invalid_geometry", "input": {}, "expected": {"status": "blocked", "code": "invalid_geometry"}},
     {"case_id": "GIS-005", "category": "spatial", "scenario": "missing_field", "input": {}, "expected": {"status": "blocked", "code": "missing_fields"}},
     {"case_id": "GIS-006", "category": "spatial", "scenario": "projected_valid", "input": {"crs": "EPSG:32651"}, "expected": {"status": "ready", "crs": "EPSG:32651", "feature_count": 1}},
-    {"case_id": "POI-001", "category": "poi", "scenario": "category_filter", "input": {"categories": ["地铁站"], "radius_m": 2000}, "expected": {"provider": "mock", "record_count": 2, "categories": ["地铁站"], "poi_ids": ["F001", "F002"]}},
-    {"case_id": "POI-002", "category": "poi", "scenario": "radius_filter", "input": {"categories": ["地铁站"], "radius_m": 300}, "expected": {"provider": "mock", "record_count": 1, "poi_ids": ["F001"]}},
+    {"case_id": "POI-001", "category": "poi", "scenario": "category_filter", "input": {"categories": ["地铁站"], "radius_m": 2000}, "expected": {"provider": "mock", "record_count": 2, "categories": ["地铁站"], "poi_ids": ["F0001", "F0002"]}},
+    {"case_id": "POI-002", "category": "poi", "scenario": "radius_filter", "input": {"categories": ["地铁站"], "radius_m": 300}, "expected": {"provider": "mock", "record_count": 1, "poi_ids": ["F0001"]}},
     {"case_id": "POI-003", "category": "poi", "scenario": "empty_result", "input": {"longitude": 0, "latitude": 0, "categories": ["地铁站"], "radius_m": 500}, "expected": {"provider": "mock", "record_count": 0, "categories": [], "poi_ids": []}},
     {"case_id": "POIF-001", "category": "poi_failure", "scenario": "retry_429_then_success", "input": {"categories": ["地铁站"], "limit": 1}, "expected": {"provider": "amap", "http_calls": 2, "circuit_open": false}},
     {"case_id": "POIF-002", "category": "poi_failure", "scenario": "open_circuit_fixture_fallback", "input": {"categories": ["地铁站"], "limit": 20}, "expected": {"providers": ["mock", "mock"], "fallback_reasons": ["POIRateLimitError", "POICircuitOpenError"], "http_calls": 1, "circuit_open": true}},

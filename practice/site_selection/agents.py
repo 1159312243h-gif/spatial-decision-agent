@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from enum import StrEnum
-
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from .agent_orchestration import AgentRole
 from .comparison import compare_candidate_results
 from .constraints import ConstraintLayerSpec
 from .evidence import AgentState, AnalysisStatus, EvidenceStatus
@@ -20,13 +19,6 @@ from .rules import RuleDefinition
 from .spatial.analysis import run_gis_analysis
 from .spatial.constraint_analysis import run_spatial_constraint_analysis
 from .spatial.gateway import SpatialDatasetGateway, collect_gis_evidence
-
-
-class AgentRole(StrEnum):
-    ORCHESTRATOR = "orchestrator"
-    SPATIAL = "spatial"
-    POLICY = "policy"
-    REVIEW = "review"
 
 
 class SpatialAgentBlockedError(RuntimeError):

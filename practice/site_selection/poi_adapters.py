@@ -28,6 +28,10 @@ class FixturePOIDataset(BaseModel):
     provider: POIProvider = POIProvider.MOCK
     crs: NonEmptyString = "EPSG:4326"
     updated_at: datetime
+    is_synthetic: bool
+    coverage_scope: NonEmptyString
+    generation_method: NonEmptyString
+    quality_notice: NonEmptyString
     records: list[POIRecord] = Field(min_length=30)
 
     @field_validator("updated_at")
@@ -43,6 +47,8 @@ class FixturePOIDataset(BaseModel):
             raise ValueError("Fixture POI 数据源必须使用 mock provider")
         if self.crs.upper() != "EPSG:4326":
             raise ValueError("Fixture POI 适配器仅支持 EPSG:4326")
+        if not self.is_synthetic:
+            raise ValueError("Fixture POI 必须显式标记为合成数据")
         poi_ids = [record.poi_id for record in self.records]
         if len(poi_ids) != len(set(poi_ids)):
             raise ValueError("Fixture POI 编号不能重复")
@@ -103,6 +109,7 @@ class FixturePOIAdapter:
                     )
                 )
         records.sort(key=lambda item: (item.distance_m or 0, item.poi_id))
+        available_record_count = len(records)
         records = records[: query.limit]
 
         source = POISourceMeta(
@@ -113,6 +120,11 @@ class FixturePOIAdapter:
             queried_at=self._clock(),
             crs=self._dataset.crs,
             record_count=len(records),
+            available_record_count=available_record_count,
+            is_truncated=available_record_count > len(records),
+            dataset_record_count=len(self._dataset.records),
+            is_synthetic=self._dataset.is_synthetic,
+            quality_notice=self._dataset.quality_notice,
         )
         return POIFeatureSet(
             query=query.model_copy(deep=True),

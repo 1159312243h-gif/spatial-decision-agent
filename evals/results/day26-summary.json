@@ -1,7 +1,7 @@
 {
   "suite_id": "site-selection-day26",
   "version": "2026.08.26.1",
-  "generated_at": "2026-08-19T13:22:37.178559Z",
+  "generated_at": "2026-08-20T02:50:52.395795Z",
   "environment": {
     "runtime": "local deterministic fixtures",
     "network": "disabled by evaluation design",
@@ -16,7 +16,7 @@
       "category": "preflight",
       "scenario": "missing_project_type",
       "passed": true,
-      "elapsed_ms": 0.152,
+      "elapsed_ms": 0.169,
       "expected": {
         "status": "needs_input",
         "missing_fields": [
@@ -43,7 +43,7 @@
       "category": "preflight",
       "scenario": "unsupported_project_type",
       "passed": true,
-      "elapsed_ms": 0.132,
+      "elapsed_ms": 0.142,
       "expected": {
         "status": "unsupported",
         "unsupported_value": "factory"
@@ -62,7 +62,7 @@
       "category": "preflight",
       "scenario": "missing_area_and_geometry_reference",
       "passed": true,
-      "elapsed_ms": 0.143,
+      "elapsed_ms": 0.141,
       "expected": {
         "status": "needs_input",
         "missing_fields": [
@@ -179,7 +179,7 @@
       "category": "preflight",
       "scenario": "ready_shopping_mall",
       "passed": true,
-      "elapsed_ms": 0.142,
+      "elapsed_ms": 0.136,
       "expected": {
         "status": "ready",
         "project_type": "shopping_mall",
@@ -289,7 +289,7 @@
       "category": "spatial",
       "scenario": "missing_crs",
       "passed": true,
-      "elapsed_ms": 4.465,
+      "elapsed_ms": 4.391,
       "expected": {
         "status": "blocked",
         "code": "missing_crs"
@@ -305,7 +305,7 @@
       "category": "spatial",
       "scenario": "geographic_area",
       "passed": true,
-      "elapsed_ms": 3.224,
+      "elapsed_ms": 3.523,
       "expected": {
         "status": "blocked",
         "code": "crs_not_projected"
@@ -321,7 +321,7 @@
       "category": "spatial",
       "scenario": "empty_geometry",
       "passed": true,
-      "elapsed_ms": 2.201,
+      "elapsed_ms": 2.821,
       "expected": {
         "status": "blocked",
         "code": "empty_geometry"
@@ -337,7 +337,7 @@
       "category": "spatial",
       "scenario": "invalid_geometry",
       "passed": true,
-      "elapsed_ms": 1.236,
+      "elapsed_ms": 1.424,
       "expected": {
         "status": "blocked",
         "code": "invalid_geometry"
@@ -353,7 +353,7 @@
       "category": "spatial",
       "scenario": "missing_field",
       "passed": true,
-      "elapsed_ms": 0.79,
+      "elapsed_ms": 0.884,
       "expected": {
         "status": "blocked",
         "code": "missing_fields"
@@ -369,7 +369,7 @@
       "category": "spatial",
       "scenario": "projected_valid",
       "passed": true,
-      "elapsed_ms": 1.362,
+      "elapsed_ms": 1.424,
       "expected": {
         "status": "ready",
         "crs": "EPSG:32651",
@@ -387,7 +387,7 @@
       "category": "poi",
       "scenario": "category_filter",
       "passed": true,
-      "elapsed_ms": 1.19,
+      "elapsed_ms": 5.721,
       "expected": {
         "provider": "mock",
         "record_count": 2,
@@ -395,8 +395,8 @@
           "地铁站"
         ],
         "poi_ids": [
-          "F001",
-          "F002"
+          "F0001",
+          "F0002"
         ]
       },
       "actual": {
@@ -406,8 +406,8 @@
           "地铁站"
         ],
         "poi_ids": [
-          "F001",
-          "F002"
+          "F0001",
+          "F0002"
         ]
       },
       "error_type": null
@@ -417,12 +417,12 @@
       "category": "poi",
       "scenario": "radius_filter",
       "passed": true,
-      "elapsed_ms": 0.757,
+      "elapsed_ms": 5.031,
       "expected": {
         "provider": "mock",
         "record_count": 1,
         "poi_ids": [
-          "F001"
+          "F0001"
         ]
       },
       "actual": {
@@ -432,7 +432,7 @@
           "地铁站"
         ],
         "poi_ids": [
-          "F001"
+          "F0001"
         ]
       },
       "error_type": null
@@ -442,7 +442,7 @@
       "category": "poi",
       "scenario": "empty_result",
       "passed": true,
-      "elapsed_ms": 0.493,
+      "elapsed_ms": 46.44,
       "expected": {
         "provider": "mock",
         "record_count": 0,
@@ -462,7 +462,7 @@
       "category": "poi_failure",
       "scenario": "retry_429_then_success",
       "passed": true,
-      "elapsed_ms": 0.594,
+      "elapsed_ms": 5.462,
       "expected": {
         "provider": "amap",
         "http_calls": 2,
@@ -480,7 +480,7 @@
       "category": "poi_failure",
       "scenario": "open_circuit_fixture_fallback",
       "passed": true,
-      "elapsed_ms": 0.699,
+      "elapsed_ms": 5.06,
       "expected": {
         "providers": [
           "mock",
@@ -512,7 +512,7 @@
       "category": "poi_failure",
       "scenario": "malformed_response_not_retried",
       "passed": true,
-      "elapsed_ms": 0.475,
+      "elapsed_ms": 4.429,
       "expected": {
         "error": "POIResponseError",
         "http_calls": 1,
@@ -530,7 +530,7 @@
       "category": "poi_failure",
       "scenario": "circuit_blocks_extra_http",
       "passed": true,
-      "elapsed_ms": 0.456,
+      "elapsed_ms": 4.419,
       "expected": {
         "error": "POICircuitOpenError",
         "http_calls": 1,
@@ -548,7 +548,7 @@
       "category": "rag",
       "scenario": "mall_policy_citation",
       "passed": true,
-      "elapsed_ms": 1.136,
+      "elapsed_ms": 1.687,
       "expected": {
         "result_count": 1,
         "policy_ids": [
@@ -574,7 +574,7 @@
       "category": "rag",
       "scenario": "logistics_policy_citation",
       "passed": true,
-      "elapsed_ms": 0.44,
+      "elapsed_ms": 0.778,
       "expected": {
         "result_count": 1,
         "policy_ids": [
@@ -600,7 +600,7 @@
       "category": "rag",
       "scenario": "jurisdiction_empty",
       "passed": true,
-      "elapsed_ms": 0.322,
+      "elapsed_ms": 0.408,
       "expected": {
         "result_count": 0,
         "policy_ids": [],
@@ -618,7 +618,7 @@
       "category": "runtime",
       "scenario": "policy_rule_match",
       "passed": true,
-      "elapsed_ms": 68.329,
+      "elapsed_ms": 27.212,
       "expected": {
         "status": "completed",
         "result_count": 1,
@@ -640,7 +640,7 @@
       "category": "runtime",
       "scenario": "no_rule_match",
       "passed": true,
-      "elapsed_ms": 21.95,
+      "elapsed_ms": 23.563,
       "expected": {
         "status": "completed",
         "result_count": 1,
@@ -662,7 +662,7 @@
       "category": "runtime",
       "scenario": "logistics_complete",
       "passed": true,
-      "elapsed_ms": 21.391,
+      "elapsed_ms": 21.996,
       "expected": {
         "status": "completed",
         "result_count": 1,
@@ -684,7 +684,7 @@
       "category": "runtime",
       "scenario": "missing_spatial_dataset",
       "passed": true,
-      "elapsed_ms": 11.33,
+      "elapsed_ms": 12.499,
       "expected": {
         "status": "failed",
         "result_count": 0,

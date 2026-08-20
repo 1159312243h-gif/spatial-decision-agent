@@ -74,6 +74,37 @@ def test_report_tables_have_fixed_matching_dxa_geometry(tmp_path: Path) -> None:
             assert cell_widths == grid_widths
 
 
+def test_report_marks_truncated_poi_counts_as_lower_bounds(
+    tmp_path: Path,
+) -> None:
+    state = completed_state()
+    data = state.model_dump()
+    for poi_evidence in (
+        data["poi_evidence"][0],
+        data["results"][0]["poi_evidence"],
+    ):
+        source = poi_evidence["feature_sets"][0]["source"]
+        source["available_record_count"] = source["record_count"] + 1
+        source["is_truncated"] = True
+    truncated = type(state).model_validate(data)
+    output = tmp_path / "truncated-report.docx"
+
+    generate_site_selection_report(truncated, output)
+
+    document = Document(output)
+    combined = "\n".join(
+        [paragraph.text for paragraph in document.paragraphs]
+        + [
+            cell.text
+            for table in document.tables
+            for row in table.rows
+            for cell in row.cells
+        ]
+    )
+    assert "是（数量为下界）" in combined
+    assert "截断说明" in combined
+
+
 def test_report_rejects_state_without_review(tmp_path: Path) -> None:
     state = completed_state()
     data = state.model_dump()

@@ -14,9 +14,9 @@ def test_performance_report_is_versioned_and_covers_gis_poi_rag_and_suite() -> N
     )
 
     assert report.fixture_versions == {
-        "poi": "fixture-2026.08.1",
+        "poi": "fixture-rich-v1",
         "policy": "fixture-2026.08.1",
-        "spatial": "fixture-2026.08.24.1",
+        "spatial": "fixture-rich-v1",
     }
     assert {item.metric for item in report.measurements} == {
         "gis_geopandas_area_intersection_distance",

@@ -17,6 +17,7 @@ from practice.site_selection import (
     CandidateParcel,
     ProjectRequest,
     ProjectType,
+    load_fixture_candidate_catalog,
     run_parallel_site_selection_workflow,
 )
 from practice.site_selection.poi_adapters import FixturePOIDataset
@@ -75,6 +76,9 @@ def test_spatial_fixture_declares_both_projects_and_expected_layers() -> None:
         "demo-logistics-constraints",
     }
     assert seed.crs == "EPSG:32651"
+    layers = {layer.layer_id: layer for layer in seed.layers}
+    assert len(layers["demo-mall-candidates"].features) == 6
+    assert len(layers["demo-logistics-candidates"].features) == 6
 
 
 def test_fixture_registry_exposes_both_reviewed_project_types() -> None:
@@ -114,35 +118,10 @@ def test_both_fixture_project_types_complete_full_workflow() -> None:
         fixture_root=FIXTURE_ROOT,
         spatial_gateway=MockSpatialDatasetGateway(frames),
     )
+    catalog = load_fixture_candidate_catalog(FIXTURE_ROOT / "candidates.json")
     candidates = {
-        ProjectType.SHOPPING_MALL: [
-            CandidateParcel(
-                parcel_id="MALL-A01",
-                longitude=121.4700,
-                latitude=31.2300,
-                geometry_dataset_id="demo-mall-candidates",
-            ),
-            CandidateParcel(
-                parcel_id="MALL-A02",
-                longitude=121.4850,
-                latitude=31.2350,
-                geometry_dataset_id="demo-mall-candidates",
-            ),
-        ],
-        ProjectType.LOGISTICS_PARK: [
-            CandidateParcel(
-                parcel_id="LOG-A01",
-                longitude=121.5200,
-                latitude=31.2400,
-                geometry_dataset_id="demo-logistics-candidates",
-            ),
-            CandidateParcel(
-                parcel_id="LOG-A02",
-                longitude=121.5600,
-                latitude=31.2550,
-                geometry_dataset_id="demo-logistics-candidates",
-            ),
-        ],
+        project_type: [item.to_candidate() for item in items]
+        for project_type, items in catalog.project_candidates.items()
     }
 
     for project_type, project_candidates in candidates.items():
@@ -159,8 +138,11 @@ def test_both_fixture_project_types_complete_full_workflow() -> None:
         )
 
         assert result.status is AnalysisStatus.COMPLETED
-        assert len(result.results) == 2
-        assert len(result.comparison_report.candidates) == 2
+        assert len(result.results) == 6
+        assert len(result.comparison_report.candidates) == 6
+        assert len(
+            {round(item.overall_soft_score, 6) for item in result.results}
+        ) >= 4
         assert all(item.gis_evidence.metrics for item in result.results)
         assert all(item.poi_evidence.feature_sets for item in result.results)
         assert all(

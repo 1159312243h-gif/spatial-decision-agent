@@ -1,18 +1,18 @@
 {
   "is_fixture": true,
-  "version": "fixture-2026.08.24.1",
-  "updated_at": "2026-08-24T12:00:00Z",
+  "version": "fixture-rich-v1",
+  "updated_at": "2026-08-20T00:00:00Z",
   "crs": "EPSG:32651",
   "projects": [
     {
       "project_id": "fixture-shopping-mall",
       "project_type": "shopping_mall",
-      "name": "合成商场选址演示"
+      "name": "合成商场多候选评估"
     },
     {
       "project_id": "fixture-logistics-park",
       "project_type": "logistics_park",
-      "name": "合成物流园选址演示"
+      "name": "合成物流园多候选评估"
     }
   ],
   "layers": [
@@ -22,17 +22,227 @@
       "name": "合成商场候选地",
       "layer_type": "candidate_parcel",
       "source_id_field": "parcel_id",
-      "required_fields": ["parcel_id", "land_use"],
+      "required_fields": [
+        "parcel_id",
+        "land_use",
+        "scenario_profile"
+      ],
       "features": [
         {
           "source_feature_id": "MALL-A01",
-          "properties": {"parcel_id": "MALL-A01", "land_use": "fixture-commercial"},
-          "geometry": {"type": "Polygon", "coordinates": [[[354230.604, 3456051.065], [354330.604, 3456051.065], [354330.604, 3456151.065], [354230.604, 3456151.065], [354230.604, 3456051.065]]]}
+          "properties": {
+            "parcel_id": "MALL-A01",
+            "land_use": "fixture-commercial",
+            "scenario_profile": "transit_catering_core",
+            "area_hectares": 0.9
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  354227.571,
+                  3456058.639
+                ],
+                [
+                  354333.637,
+                  3456058.639
+                ],
+                [
+                  354333.637,
+                  3456143.492
+                ],
+                [
+                  354227.571,
+                  3456143.492
+                ],
+                [
+                  354227.571,
+                  3456058.639
+                ]
+              ]
+            ]
+          }
         },
         {
           "source_feature_id": "MALL-A02",
-          "properties": {"parcel_id": "MALL-A02", "land_use": "fixture-commercial"},
-          "geometry": {"type": "Polygon", "coordinates": [[[355656.982, 3456585.612], [355776.982, 3456585.612], [355776.982, 3456685.612], [355656.982, 3456685.612], [355656.982, 3456585.612]]]}
+          "properties": {
+            "parcel_id": "MALL-A02",
+            "land_use": "fixture-commercial",
+            "scenario_profile": "office_gateway",
+            "area_hectares": 1.2
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  357553.174,
+                  3456006.436
+                ],
+                [
+                  357675.648,
+                  3456006.436
+                ],
+                [
+                  357675.648,
+                  3456104.416
+                ],
+                [
+                  357553.174,
+                  3456104.416
+                ],
+                [
+                  357553.174,
+                  3456006.436
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "MALL-A03",
+          "properties": {
+            "parcel_id": "MALL-A03",
+            "land_use": "fixture-commercial",
+            "scenario_profile": "residential_mature",
+            "area_hectares": 1.5
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  350878.307,
+                  3456092.99
+                ],
+                [
+                  351015.237,
+                  3456092.99
+                ],
+                [
+                  351015.237,
+                  3456202.534
+                ],
+                [
+                  350878.307,
+                  3456202.534
+                ],
+                [
+                  350878.307,
+                  3456092.99
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "MALL-A04",
+          "properties": {
+            "parcel_id": "MALL-A04",
+            "land_use": "fixture-commercial",
+            "scenario_profile": "mixed_service_center",
+            "area_hectares": 1.8
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  354267.042,
+                  3460474.978
+                ],
+                [
+                  354417.042,
+                  3460474.978
+                ],
+                [
+                  354417.042,
+                  3460594.978
+                ],
+                [
+                  354267.042,
+                  3460594.978
+                ],
+                [
+                  354267.042,
+                  3460474.978
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "MALL-A05",
+          "properties": {
+            "parcel_id": "MALL-A05",
+            "land_use": "fixture-commercial",
+            "scenario_profile": "competition_saturated",
+            "area_hectares": 1.3
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  357610.705,
+                  3460438.315
+                ],
+                [
+                  357738.18,
+                  3460438.315
+                ],
+                [
+                  357738.18,
+                  3460540.295
+                ],
+                [
+                  357610.705,
+                  3460540.295
+                ],
+                [
+                  357610.705,
+                  3460438.315
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "MALL-A06",
+          "properties": {
+            "parcel_id": "MALL-A06",
+            "land_use": "fixture-commercial",
+            "scenario_profile": "emerging_fringe",
+            "area_hectares": 1.6
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  350938.906,
+                  3460525.14
+                ],
+                [
+                  351080.328,
+                  3460525.14
+                ],
+                [
+                  351080.328,
+                  3460638.277
+                ],
+                [
+                  350938.906,
+                  3460638.277
+                ],
+                [
+                  350938.906,
+                  3460525.14
+                ]
+              ]
+            ]
+          }
         }
       ]
     },
@@ -42,12 +252,38 @@
       "name": "合成生态观察图层",
       "layer_type": "ecological_protection",
       "source_id_field": "constraint_id",
-      "required_fields": ["constraint_id", "level"],
+      "required_fields": [
+        "constraint_id",
+        "level"
+      ],
       "features": [
         {
           "source_feature_id": "MALL-ECO-01",
-          "properties": {"constraint_id": "MALL-ECO-01", "level": "fixture-review"},
-          "geometry": {"type": "Point", "coordinates": [354280.604, 3456101.065]}
+          "properties": {
+            "constraint_id": "MALL-ECO-01",
+            "level": "fixture-review"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              354280.604,
+              3456101.065
+            ]
+          }
+        },
+        {
+          "source_feature_id": "MALL-ECO-02",
+          "properties": {
+            "constraint_id": "MALL-ECO-02",
+            "level": "fixture-review"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              357674.443,
+              3460489.305
+            ]
+          }
         }
       ]
     },
@@ -57,17 +293,227 @@
       "name": "合成物流园候选地",
       "layer_type": "candidate_parcel",
       "source_id_field": "parcel_id",
-      "required_fields": ["parcel_id", "land_use"],
+      "required_fields": [
+        "parcel_id",
+        "land_use",
+        "scenario_profile"
+      ],
       "features": [
         {
           "source_feature_id": "LOG-A01",
-          "properties": {"parcel_id": "LOG-A01", "land_use": "fixture-logistics"},
-          "geometry": {"type": "Polygon", "coordinates": [[[358983.029, 3457094.653], [359133.029, 3457094.653], [359133.029, 3457194.653], [358983.029, 3457194.653], [358983.029, 3457094.653]]]}
+          "properties": {
+            "parcel_id": "LOG-A01",
+            "land_use": "fixture-logistics",
+            "scenario_profile": "highway_service_gateway",
+            "area_hectares": 2.0
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  362701.961,
+                  3450380.347
+                ],
+                [
+                  362860.075,
+                  3450380.347
+                ],
+                [
+                  362860.075,
+                  3450506.838
+                ],
+                [
+                  362701.961,
+                  3450506.838
+                ],
+                [
+                  362701.961,
+                  3450380.347
+                ]
+              ]
+            ]
+          }
         },
         {
           "source_feature_id": "LOG-A02",
-          "properties": {"parcel_id": "LOG-A02", "land_use": "fixture-logistics"},
-          "geometry": {"type": "Polygon", "coordinates": [[[362799.331, 3458706.981], [362979.331, 3458706.981], [362979.331, 3458806.981], [362799.331, 3458806.981], [362799.331, 3458706.981]]]}
+          "properties": {
+            "parcel_id": "LOG-A02",
+            "land_use": "fixture-logistics",
+            "scenario_profile": "rail_industrial_cluster",
+            "area_hectares": 3.2
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  368399.003,
+                  3450290.726
+                ],
+                [
+                  368599.003,
+                  3450290.726
+                ],
+                [
+                  368599.003,
+                  3450450.726
+                ],
+                [
+                  368399.003,
+                  3450450.726
+                ],
+                [
+                  368399.003,
+                  3450290.726
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "LOG-A03",
+          "properties": {
+            "parcel_id": "LOG-A03",
+            "land_use": "fixture-logistics",
+            "scenario_profile": "port_warehouse_corridor",
+            "area_hectares": 4.5
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  374098.336,
+                  3450206.093
+                ],
+                [
+                  374335.507,
+                  3450206.093
+                ],
+                [
+                  374335.507,
+                  3450395.83
+                ],
+                [
+                  374098.336,
+                  3450395.83
+                ],
+                [
+                  374098.336,
+                  3450206.093
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "LOG-A04",
+          "properties": {
+            "parcel_id": "LOG-A04",
+            "land_use": "fixture-logistics",
+            "scenario_profile": "urban_delivery_sensitive",
+            "area_hectares": 1.8
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  362850.488,
+                  3461468.131
+                ],
+                [
+                  363000.488,
+                  3461468.131
+                ],
+                [
+                  363000.488,
+                  3461588.131
+                ],
+                [
+                  362850.488,
+                  3461588.131
+                ],
+                [
+                  362850.488,
+                  3461468.131
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "LOG-A05",
+          "properties": {
+            "parcel_id": "LOG-A05",
+            "land_use": "fixture-logistics",
+            "scenario_profile": "balanced_logistics_node",
+            "area_hectares": 3.8
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  368528.477,
+                  3461367.953
+                ],
+                [
+                  368746.422,
+                  3461367.953
+                ],
+                [
+                  368746.422,
+                  3461542.309
+                ],
+                [
+                  368528.477,
+                  3461542.309
+                ],
+                [
+                  368528.477,
+                  3461367.953
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "LOG-A06",
+          "properties": {
+            "parcel_id": "LOG-A06",
+            "land_use": "fixture-logistics",
+            "scenario_profile": "air_cargo_intermodal",
+            "area_hectares": 2.7
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  374257.489,
+                  3461311.755
+                ],
+                [
+                  374441.201,
+                  3461311.755
+                ],
+                [
+                  374441.201,
+                  3461458.724
+                ],
+                [
+                  374257.489,
+                  3461458.724
+                ],
+                [
+                  374257.489,
+                  3461311.755
+                ]
+              ]
+            ]
+          }
         }
       ]
     },
@@ -77,12 +523,38 @@
       "name": "合成敏感目标观察图层",
       "layer_type": "sensitive_receptor",
       "source_id_field": "constraint_id",
-      "required_fields": ["constraint_id", "level"],
+      "required_fields": [
+        "constraint_id",
+        "level"
+      ],
       "features": [
         {
           "source_feature_id": "LOG-SENSITIVE-01",
-          "properties": {"constraint_id": "LOG-SENSITIVE-01", "level": "fixture-review"},
-          "geometry": {"type": "Point", "coordinates": [362889.331, 3458756.981]}
+          "properties": {
+            "constraint_id": "LOG-SENSITIVE-01",
+            "level": "fixture-review"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              362925.488,
+              3461528.131
+            ]
+          }
+        },
+        {
+          "source_feature_id": "LOG-SENSITIVE-02",
+          "properties": {
+            "constraint_id": "LOG-SENSITIVE-02",
+            "level": "fixture-review"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              374349.345,
+              3461385.24
+            ]
+          }
         }
       ]
     }

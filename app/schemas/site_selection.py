@@ -8,6 +8,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from practice.site_selection import (
+    AgentExecutionPlan,
+    AgentStepTrace,
     AnalysisResult,
     AnalysisStatus,
     CandidateComparisonReport,
@@ -119,6 +121,8 @@ class SiteSelectionAnalysisResponse(BaseModel):
     results: list[AnalysisResult] = Field(default_factory=list)
     comparison_report: CandidateComparisonReport | None = None
     evidence_review_report: EvidenceReviewReport | None = None
+    execution_plan: AgentExecutionPlan | None = None
+    agent_trace: list[AgentStepTrace] = Field(default_factory=list)
     errors: list[NonEmptyString] = Field(default_factory=list)
 
     @classmethod
@@ -131,6 +135,8 @@ class SiteSelectionAnalysisResponse(BaseModel):
             results=state.results,
             comparison_report=state.comparison_report,
             evidence_review_report=state.evidence_review_report,
+            execution_plan=state.execution_plan,
+            agent_trace=state.agent_trace,
             errors=state.errors,
         )
 

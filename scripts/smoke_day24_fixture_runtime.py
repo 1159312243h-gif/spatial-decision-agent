@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import httpx
 from mcp import Client
+from practice.site_selection import ProjectType, load_fixture_candidate_catalog
 
 
 EXPECTED_MCP_TOOLS = {
@@ -26,46 +27,17 @@ EXPECTED_MCP_TOOLS = {
 }
 
 
+_CATALOG = load_fixture_candidate_catalog(
+    PROJECT_ROOT / "data" / "fixtures" / "candidates.json"
+)
 PAYLOADS = {
-    "shopping_mall": {
-        "project_type": "shopping_mall",
-        "candidate_parcels": [
-            {
-                "parcel_id": "MALL-A01",
-                "name": "商场候选 A",
-                "longitude": 121.4700,
-                "latitude": 31.2300,
-                "geometry_dataset_id": "demo-mall-candidates",
-            },
-            {
-                "parcel_id": "MALL-A02",
-                "name": "商场候选 B",
-                "longitude": 121.4850,
-                "latitude": 31.2350,
-                "geometry_dataset_id": "demo-mall-candidates",
-            },
-        ],
-    },
-    "logistics_park": {
-        "project_type": "logistics_park",
-        "candidate_parcels": [
-            {
-                "parcel_id": "LOG-A01",
-                "name": "物流园候选 A",
-                "longitude": 121.5200,
-                "latitude": 31.2400,
-                "geometry_dataset_id": "demo-logistics-candidates",
-            },
-            {
-                "parcel_id": "LOG-A02",
-                "name": "物流园候选 B",
-                "longitude": 121.5600,
-                "latitude": 31.2550,
-                "geometry_dataset_id": "demo-logistics-candidates",
-            },
-        ],
-    },
+    project_type.value: _CATALOG.payload_for(project_type)
+    for project_type in ProjectType
 }
+EXPECTED_CANDIDATE_COUNT = sum(
+    len(payload["candidate_parcels"])
+    for payload in PAYLOADS.values()
+)
 
 
 class FixtureSmokeError(RuntimeError):
@@ -109,13 +81,17 @@ def smoke_api(api_url: str) -> list[str]:
                     f"run_error={run.get('error') or 'none'}"
                 )
             analysis = run["analysis"]
-            if len(analysis["results"]) != 2:
+            expected_results = len(payload["candidate_parcels"])
+            if len(analysis["results"]) != expected_results:
                 raise FixtureSmokeError(
                     f"stage=analysis; project_type={project_type}; "
                     "result count mismatch"
                 )
             comparison = analysis["comparison_report"]
-            if not comparison or len(comparison["candidates"]) != 2:
+            if (
+                not comparison
+                or len(comparison["candidates"]) != expected_results
+            ):
                 raise FixtureSmokeError(
                     f"stage=analysis; project_type={project_type}; "
                     "comparison is incomplete"
@@ -173,8 +149,9 @@ def main() -> int:
         )
         return 1
     print(
-        "Day24 fixture smoke OK: project_types=2, candidates=4, "
-        "reports=2, mcp_tools=6, explanation_statuses="
+        "Day24 fixture smoke OK: project_types=2, "
+        f"candidates={EXPECTED_CANDIDATE_COUNT}, reports=2, mcp_tools=6, "
+        "explanation_statuses="
         + ",".join(statuses)
     )
     return 0

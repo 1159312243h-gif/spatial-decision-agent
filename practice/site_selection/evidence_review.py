@@ -16,7 +16,7 @@ class EvidenceReviewBlockedError(RuntimeError):
 def review_site_selection_evidence(
     state: AgentState,
     *,
-    review_version: str = "evidence-review-v1",
+    review_version: str = "evidence-review-v2",
 ) -> AgentState:
     """Audit lineage and completeness without generating a policy conclusion."""
 
@@ -74,6 +74,44 @@ def review_site_selection_evidence(
                         severity=ReviewIssueSeverity.WARNING,
                         parcel_id=parcel_id,
                         message="POI 在线数据源不可用，本次结果包含 Fixture 降级数据",
+                        evidence_refs=source_refs,
+                    )
+                )
+            truncated = [
+                feature_set
+                for feature_set in poi.feature_sets
+                if feature_set.source.is_truncated
+            ]
+            if truncated:
+                issues.append(
+                    EvidenceReviewIssue(
+                        issue_code="poi_result_truncated",
+                        severity=ReviewIssueSeverity.WARNING,
+                        parcel_id=parcel_id,
+                        message=(
+                            "POI 查询达到返回上限，数量与密度指标只能解释为下界"
+                        ),
+                        evidence_refs=[
+                            (
+                                f"{feature_set.query.group_key}:"
+                                f"{feature_set.source.record_count}/"
+                                f"{feature_set.source.available_record_count}"
+                            )
+                            for feature_set in truncated
+                        ],
+                    )
+                )
+            if any(
+                feature_set.source.is_synthetic
+                and feature_set.source.fallback_from is None
+                for feature_set in poi.feature_sets
+            ):
+                issues.append(
+                    EvidenceReviewIssue(
+                        issue_code="poi_synthetic_source",
+                        severity=ReviewIssueSeverity.WARNING,
+                        parcel_id=parcel_id,
+                        message="POI 来源为合成 Fixture，不代表真实城市设施现状",
                         evidence_refs=source_refs,
                     )
                 )

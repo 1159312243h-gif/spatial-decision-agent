@@ -53,8 +53,11 @@ def test_fixture_has_minimum_records_and_covers_both_profiles() -> None:
         for category in group.categories
     }
 
-    assert len(dataset.records) >= 30
+    assert len(dataset.records) == 478
     assert required_categories <= fixture_categories
+    assert dataset.is_synthetic is True
+    assert dataset.generation_method == "deterministic-radial-v1"
+    assert "不代表真实城市覆盖率" in dataset.quality_notice
 
 
 def test_search_filters_category_and_radius_and_sorts_by_distance() -> None:
@@ -85,7 +88,9 @@ def test_search_applies_limit_after_deterministic_distance_order() -> None:
 
     assert len(first.records) == 1
     assert first.records == second.records
-    assert first.records[0].poi_id == "F001"
+    assert first.records[0].poi_id == "F0001"
+    assert first.source.available_record_count > len(first.records)
+    assert first.source.is_truncated is True
 
 
 def test_search_returns_empty_feature_set_for_no_match() -> None:
@@ -101,14 +106,17 @@ def test_source_metadata_preserves_fixture_lineage() -> None:
     result = adapter().search(query())
 
     assert result.source.provider is POIProvider.MOCK
-    assert result.source.dataset_id == "poi-fixture-demo-20260818"
-    assert result.source.dataset_version == "fixture-2026.08.1"
+    assert result.source.dataset_id == "poi-fixture-synthetic-multicandidate"
+    assert result.source.dataset_version == "fixture-rich-v1"
     assert result.source.dataset_updated_at == datetime(
-        2026, 8, 18, 12, 0, tzinfo=timezone.utc
+        2026, 8, 20, 0, 0, tzinfo=timezone.utc
     )
     assert result.source.queried_at == NOW
     assert result.source.crs == "EPSG:4326"
     assert result.source.record_count == len(result.records)
+    assert result.source.dataset_record_count == 478
+    assert result.source.is_synthetic is True
+    assert "不代表真实城市覆盖率" in result.source.quality_notice
 
 
 def test_search_result_and_dataset_property_are_defensive_copies() -> None:

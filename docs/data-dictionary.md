@@ -62,7 +62,7 @@
 
 ### `POISourceMeta`
 
-`provider`、`dataset_id`、`dataset_version`、`dataset_updated_at`、`queried_at`、`crs`、`record_count` 组成最小来源链。发生降级时必须同时存在 `fallback_from` 和 `fallback_reason`。
+`provider`、`dataset_id`、`dataset_version`、`dataset_updated_at`、`queried_at`、`crs`、`record_count` 组成最小来源链。`record_count` 表示实际返回数，`available_record_count` 表示应用查询上限前已确认的可用数，`dataset_record_count` 表示整个数据集总量；三者不得混用。`is_truncated` 必须严格等于 `available_record_count > record_count`。`is_synthetic` 与 `quality_notice` 明示数据性质和使用边界。发生降级时必须同时存在 `fallback_from` 和 `fallback_reason`。
 
 ## 3. 分析输出
 
@@ -74,6 +74,9 @@
 | `AnalysisResult` | `parcel_id`, 三类证据, `site_score_report`, `warnings` | 单候选地汇总，不生成自动合规结论 |
 | `CandidateComparisonReport` | `scoring_version`, `candidates` | 候选地软评分排序与政策结果并列展示 |
 | `EvidenceReviewReport` | `status`, `issues`, `requires_human_review` | 血缘完整性和人工复核要求 |
+| `AgentExecutionPlan` | `plan_id`, `version`, `steps` | 闭合、无环、白名单化的 Agent/Skill DAG |
+| `AgentSkillManifest` | `node_id`, `role`, `skill_name`, `skill_version`, `depends_on`, `parallel_group`, `llm_allowed`, `output_contract` | 单节点审核契约 |
+| `AgentStepTrace` | `node_id`, `status`, `elapsed_ms`, `error_type` | 领域工作流的节点级执行轨迹 |
 | `RunStageTrace` | `stage`, `status`, `elapsed_ms`, `error_type` | 清洗后的阶段可观测性 |
 | `HumanReviewState` | `status`, `reason_codes`, `updated_at`, `note` | 已阅状态，不是审批状态 |
 

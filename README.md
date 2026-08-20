@@ -14,6 +14,8 @@
 - 使用规则包生成结构化规则发现；规则命中进入人工复核，未命中也不等于整体合规。
 - 使用 BM25、向量检索和 RRF 生成带政策出处、条款、页码及引用片段的检索结果。
 - 使用 LangGraph 并行执行 POI 与空间分支，再汇合到规则评估和证据审查。
+- 使用版本化 Agent/Skill DAG 约束节点依赖、并行组、输出契约和 LLM 权限，并返回节点级执行 Trace。
+- 明确标记 POI 实际返回数、查询可用数和截断状态；截断与合成来源自动进入证据质量门禁。
 - 使用 Redis 保存运行状态、幂等键、POI 缓存和事件流，并为每类数据设置 TTL。
 - 使用 RQ 将长时间运行的分析交给独立 Worker，支持排队、取消、超时和失败回调。
 - 通过 FastAPI、MCP 和 Streamlit Workbench 提供 HTTP、工具调用和人工演示入口。
@@ -44,6 +46,7 @@ flowchart LR
     Run --> Queue["RQ / Redis"]
     Queue --> Worker["Worker"]
     Worker --> Graph["LangGraph Workflow"]
+    Graph --> Plan["Versioned Agent / Skill Plan"]
     Graph --> GIS["Spatial Agent"]
     Graph --> POI["POI Branch"]
     GIS --> Rules["Policy Agent"]
@@ -115,7 +118,7 @@ python .\scripts\smoke_day24_fixture_runtime.py
 python .\scripts\smoke_day27_async_runtime.py
 ```
 
-Compose 默认以异步模式运行。`POST /site-selection/runs` 返回 `202 Accepted` 和 `run_id` 只表示任务已入队；Workbench 通过刷新读取 `queued/running/completed` 状态，也可以取消尚未结束的任务。`POST /site-selection/analyses` 仍保留为显式同步分析接口。
+Compose 默认以异步模式运行。`POST /site-selection/runs` 返回 `202 Accepted` 和 `run_id` 只表示任务已入队；Workbench 每 2 秒自动读取 `queued/running/completed` 状态，进入终态后自动展示结果，也可以取消尚未结束的任务。`POST /site-selection/analyses` 仍保留为显式同步分析接口。
 
 入口：
 
@@ -123,6 +126,24 @@ Compose 默认以异步模式运行。`POST /site-selection/runs` 返回 `202 Ac
 - FastAPI Swagger: <http://localhost:8000/docs>
 - Health: <http://localhost:8000/health>
 - MCP Streamable HTTP: <http://localhost:8001/mcp>
+
+Workbench 使用分层地图：候选地为带编号标签的红色大标记，POI 为按类别着色的小标记；两类点位都支持悬浮查看来源和指标。
+
+`Agent 运行`页签展示本次使用的执行计划、每个 Agent/Skill 节点的状态与耗时，以及 Evidence Review 质量门禁。POI 达到查询上限时，页面明确提示数量和密度只是下界；合成 Fixture 和在线来源不会静默混写成同一可信度。
+
+## 自动加载 POI
+
+默认 `SITE_SELECTION_POI_PROVIDER=fixture`，用于离线演示和确定性测试。要在每次分析中自动查询在线 POI，可在 `.env` 选择：
+
+```dotenv
+# 无 Key 时使用 Overpass；配置 AMAP_API_KEY 后优先高德
+SITE_SELECTION_POI_PROVIDER=auto
+AMAP_API_KEY=
+SITE_SELECTION_POI_FALLBACK_ENABLED=true
+SITE_SELECTION_POI_PERSIST_ENABLED=true
+```
+
+也可以显式设置为 `overpass` 或 `amap`。在线查询包含速率限制、有界重试、熔断和 Redis TTL 缓存；首次成功返回会按 `source + source_id` 参数化 upsert 到 PostGIS。可用性错误允许显式回退 Fixture，格式错误不会被回退掩盖。API 与 Worker 必须使用相同配置，Compose 已统一透传这些变量。
 
 停止服务：
 
@@ -175,6 +196,8 @@ python .\scripts\benchmark_day26.py --samples 7 --warmup-runs 2
 
 ## Fixture 与真实数据
 
-`data/fixtures/poi.json` 当前有 32 条合成 POI，用于验证分类、半径、指标、排序和异常路径。它的参考性不足以支撑真实选址决策。接入真实 Provider 时必须另外完成 API 授权、分页完整性、数据新鲜度、行政区覆盖率、坐标转换精度、类别映射抽检和成本评估。
+`data/fixtures/candidates.json` 当前为商场和物流园各提供 6 个候选，共 12 个候选场景；`data/fixtures/poi.json` 包含围绕这些候选生成的 478 条合成 POI、25 个类别。候选覆盖轨交餐饮核心、办公门户、成熟居住区、竞争饱和区、成长外围、高速门户、铁路产业、港口仓储、城市配送和航空联运等差异化画像，能够验证多候选比较、分类、半径、指标、排序和异常路径。
+
+这些数据由 `scripts/generate_rich_fixtures.py` 确定性生成，可复现但不等于真实。接口、Workbench 和报告同时展示查询命中数、数据集总量、`is_synthetic` 与质量说明，禁止把 478 条局部场景数据解释为城市覆盖率。详细边界见 `docs/fixture-data-quality.md`。在线 Provider 已可自动加载，但用于真实决策前仍必须完成 API 授权、分页完整性、数据新鲜度、行政区覆盖率、坐标转换精度、类别映射抽检和成本评估。
 
 政策、规则和空间图层也都是合成测试数据。任何演示输出都只能表述为“系统流程与证据链已执行”，不能表述为“地块合规”或“推荐选址”。

@@ -1111,3 +1111,44 @@
 - 针对性测试 16 项通过；独立测试区完整 pytest 451 项通过。
 - Docker Compose API、Worker、PostGIS、Redis 均健康；Day 27 真实异步 Smoke 通过，事件链 4 个事件齐全并成功读取 DOCX 报告。
 - Day 24 回归 Smoke 通过：2 类项目、4 个候选、2 份报告、6 个 MCP 工具，解释状态均为 `generated`。
+
+### 丰富 Fixture 数据与多候选比较
+
+- 将商场和物流园候选从每类 2 个扩展为每类 6 个，共 12 个差异化候选场景。
+- 候选画像覆盖轨交餐饮、办公门户、成熟居住、竞争饱和、成长外围、高速、铁路、港口、城市配送、综合物流和航空联运等场景。
+- 将 POI Fixture 扩展为 478 条、25 个类别，并按候选画像设置不同的类别数量和距离分布。
+- 新增确定性生成器，统一生成候选目录、POI 和空间图层；回归测试逐项验证磁盘数据与生成器输出一致。
+- 空间图层包含 12 个不同面积的候选多边形，以及每类项目 2 个约束要素。
+- Fixture 来源元数据新增数据集总量、合成标记和质量说明，并与本次查询命中数分开。
+- Workbench 候选比较增加候选名称、POI 命中组数、指标组总数、命中记录数和合成状态；POI 页展示来源与质量边界。
+- DOCX 报告增加数据集总量、数据性质和质量边界，不把合成数据描述为真实城市覆盖。
+- 评分归一化按查询面积和半径调整，商场与物流园使用不同的候选面积上界；12 个场景至少产生 4 种不同软评分。
+- 冻结评测重新生成并通过 `24/24`；完整回归 `456 passed in 8.37s`。
+- 478 条 POI 的本地 Fixture 查询中位数 `0.110ms`；该数字不是在线 Provider SLA 或生产容量声明。
+
+### 工作台自动更新、分层地图与在线 POI 自动加载
+
+- Workbench 对 queued/running 运行每 2 秒自动轮询，进入完成或失败终态后自动刷新完整结果；保留立即刷新和取消操作。
+- 将无法区分点位的 `st.map` 替换为 PyDeck 分层地图：候选使用红色大标记和编号标签，POI 使用稳定类别颜色的小标记。
+- 地图根据当前候选与 POI 范围自动计算中心和缩放级别，并提供候选名称、类别、Provider、距离与软评分悬浮信息。
+- 新增 `fixture / auto / amap / overpass` 环境驱动 Provider 工厂；`auto` 优先使用已配置 Key 的高德，否则使用 Overpass。
+- 高德查询保留分页和 GCJ-02 到 WGS84 转换；Overpass 为 25 个内部类别提供受控 OSM 标签映射。
+- 在线 Provider 接入速率限制、有界重试、熔断、Redis TTL 缓存和显式 Fixture 回退，格式错误不会被回退掩盖。
+- 在线结果按 `source + source_id` 参数化 upsert 到 PostGIS；缓存命中会重新绑定当前运行的查询身份。
+- API 与 Worker Compose 服务统一透传 POI Provider 配置，避免预览和完整分析来源不一致。
+- 新增 Provider 选择、缓存复用、高德优先、Overpass 自动加载、PostGIS 入库及地图层契约测试。
+- 针对性测试 `35 passed`，完整回归 `461 passed in 9.26s`。
+
+### 版本化 Agent DAG、节点轨迹与 POI 可信度门禁
+
+- 新增 `AgentExecutionPlan` 与 `AgentSkillManifest`，把 Orchestrator、POI、Spatial、Policy、Merge 和 Review 定义为闭合无环的白名单 Skill DAG。
+- POI 与 Spatial 节点显式属于同一并行组；Policy 依赖 Spatial，Merge 同时依赖 POI 与 Policy，Review 依赖 Merge。
+- 新增 `AgentStepTrace`，返回节点角色、Skill 版本、依赖、并行组、状态、耗时和脱敏错误类型。
+- 关键分支失败时，依赖节点按契约标记 `failed/skipped`；失败空间分支不会继续执行政策判定或证据审查。
+- 当前业务 DAG 全部 `llm_allowed=false`，保持 LLM 解释层与确定性 GIS、POI、规则和排序分离。
+- POI 来源新增 `available_record_count` 与 `is_truncated`，严格区分实际返回数、查询可用数、查询上限和完整数据集总量。
+- Fixture、Overpass 和高德 Adapter 均记录截断；Evidence Review 新增 `poi_result_truncated` 与 `poi_synthetic_source` 警告。
+- Workbench 新增 `Agent 运行`页签，展示执行计划、节点轨迹和质量门禁；POI 页对截断结果显示下界警告。
+- DOCX 来源表增加返回/可用、查询上限和截断说明，来源摘要保留数量边界。
+- 新增并扩展 DAG、失败路由、POI Adapter、来源契约、Evidence Review、Workbench 和报告测试；目标组合 `67 passed`。
+- 尚未实现自然语言 PlanningIntentAgent、项目长期记忆、ScenarioVersion 与主图内政策 RAG，后续按 Agent 主线继续推进。

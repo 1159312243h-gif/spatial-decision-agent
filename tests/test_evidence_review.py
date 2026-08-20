@@ -76,3 +76,57 @@ def test_no_rule_match_is_not_reported_as_compliance() -> None:
         for issue in report.issues
     )
     assert result.results[0].conclusion is None
+
+
+def test_review_warns_when_poi_query_result_is_truncated() -> None:
+    result = run_parallel_site_selection_workflow(
+        request(),
+        manifests(),
+        dependencies(),
+    )
+    data = result.model_dump()
+    for container in (data["poi_evidence"], data["results"]):
+        poi_evidence = (
+            container[0]
+            if container is data["poi_evidence"]
+            else container[0]["poi_evidence"]
+        )
+        source = poi_evidence["feature_sets"][0]["source"]
+        source["available_record_count"] = source["record_count"] + 1
+        source["is_truncated"] = True
+    data["evidence_review_report"] = None
+    incomplete = type(result).model_validate(data)
+
+    reviewed = review_site_selection_evidence(incomplete)
+
+    assert any(
+        issue.issue_code == "poi_result_truncated"
+        for issue in reviewed.evidence_review_report.issues
+    )
+
+
+def test_review_warns_when_primary_poi_source_is_synthetic() -> None:
+    result = run_parallel_site_selection_workflow(
+        request(),
+        manifests(),
+        dependencies(),
+    )
+    data = result.model_dump()
+    for container in (data["poi_evidence"], data["results"]):
+        poi_evidence = (
+            container[0]
+            if container is data["poi_evidence"]
+            else container[0]["poi_evidence"]
+        )
+        source = poi_evidence["feature_sets"][0]["source"]
+        source["is_synthetic"] = True
+        source["quality_notice"] = "仅用于确定性测试，不代表真实城市现状"
+    data["evidence_review_report"] = None
+    incomplete = type(result).model_validate(data)
+
+    reviewed = review_site_selection_evidence(incomplete)
+
+    assert any(
+        issue.issue_code == "poi_synthetic_source"
+        for issue in reviewed.evidence_review_report.issues
+    )

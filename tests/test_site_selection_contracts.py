@@ -209,6 +209,25 @@ def test_poi_feature_count_must_match_source_metadata() -> None:
         POIFeatureSet(query=query, records=[record], source=source)
 
 
+@pytest.mark.parametrize(
+    ("available_record_count", "is_truncated"),
+    [(2, False), (1, True)],
+)
+def test_poi_source_truncation_must_match_available_count(
+    available_record_count: int,
+    is_truncated: bool,
+) -> None:
+    with pytest.raises(ValidationError, match="截断标记"):
+        POISourceMeta(
+            provider=POIProvider.OSM,
+            dataset_id="osm-test",
+            queried_at=NOW,
+            record_count=1,
+            available_record_count=available_record_count,
+            is_truncated=is_truncated,
+        )
+
+
 def test_agent_state_requires_matching_profile_type() -> None:
     request = project_request(ProjectType.SHOPPING_MALL)
     wrong_profile = get_project_profile(ProjectType.LOGISTICS_PARK)

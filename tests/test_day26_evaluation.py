@@ -28,7 +28,7 @@ def test_poi_category_fixture_expectation_matches_two_kilometre_radius() -> None
 
     assert haversine_distance_m(121.47, 31.23, 121.471, 31.23) < 2_000
     assert haversine_distance_m(121.47, 31.23, 121.49, 31.23) < 2_000
-    assert case.expected["poi_ids"] == ["F001", "F002"]
+    assert case.expected["poi_ids"] == ["F0001", "F0002"]
 
 
 def test_all_frozen_cases_pass_without_live_network() -> None:

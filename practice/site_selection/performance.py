@@ -107,7 +107,11 @@ def measure_day26_performance(
             samples=samples,
             warmup_runs=warmup_runs,
             state="local JSON fixture; no Redis; no network",
-            input_summary={"fixture_records": 32, "radius_m": 3000, "categories": 2},
+            input_summary={
+                "fixture_records": len(poi_adapter.dataset.records),
+                "radius_m": 3000,
+                "categories": 2,
+            },
         ),
         _measure(
             "rag_hybrid_retrieval",

@@ -1,7 +1,15 @@
 """Typed contracts for the site-selection analysis workflow."""
 
-from .agents import (
+from .agent_orchestration import (
+    AgentExecutionPlan,
     AgentRole,
+    AgentSkillManifest,
+    AgentStepStatus,
+    AgentStepTrace,
+    build_site_selection_execution_plan,
+    order_agent_traces,
+)
+from .agents import (
     OrchestratorAgent,
     OrchestratorAgentInput,
     OrchestratorAgentOutput,
@@ -114,6 +122,7 @@ from .poi_metrics import (
 )
 from .online_poi_adapters import (
     AmapPOIAdapter,
+    CachedPOIAdapter,
     FallbackPOIAdapter,
     FixedIntervalRateLimiter,
     GCJ02CoordinateTransformer,
@@ -126,6 +135,7 @@ from .online_poi_adapters import (
     POIRateLimitError,
     POIResponseError,
     POIUpstreamError,
+    PersistingPOIAdapter,
     RetryingCircuitBreakerPOIAdapter,
 )
 from .policy_rag import (
@@ -151,6 +161,11 @@ from .profiles import (
     POICategoryConfig,
     ProjectProfile,
     get_project_profile,
+)
+from .fixture_catalog import (
+    FixtureCandidateCatalog,
+    FixtureCandidateScenario,
+    load_fixture_candidate_catalog,
 )
 from .results import ResultAssemblyBlockedError, assemble_analysis_results
 from .reporting import (
@@ -199,9 +214,16 @@ from .workflow import (
 )
 
 __all__ = [
+    "AgentExecutionPlan",
+    "AgentSkillManifest",
+    "FixtureCandidateCatalog",
+    "FixtureCandidateScenario",
     "AgentState",
     "AgentRole",
+    "AgentStepStatus",
+    "AgentStepTrace",
     "AmapPOIAdapter",
+    "CachedPOIAdapter",
     "AnalysisResult",
     "AnalysisStatus",
     "CandidateComparisonBlockedError",
@@ -259,6 +281,7 @@ __all__ = [
     "POIResponseError",
     "POISourceMeta",
     "POIUpstreamError",
+    "PersistingPOIAdapter",
     "POIScoreReport",
     "POIScoringConfig",
     "POIScoringError",
@@ -323,6 +346,7 @@ __all__ = [
     "WorkflowEvidenceBlockedError",
     "assemble_analysis_results",
     "build_poi_queries",
+    "build_site_selection_execution_plan",
     "build_human_review_state",
     "build_poi_metrics_report",
     "chunk_policy_documents",
@@ -338,8 +362,10 @@ __all__ = [
     "get_project_profile",
     "generate_site_selection_report",
     "haversine_distance_m",
+    "load_fixture_candidate_catalog",
     "load_rule_pack",
     "normalize_metric_value",
+    "order_agent_traces",
     "route_after_step",
     "review_site_selection_evidence",
     "run_site_selection_workflow",

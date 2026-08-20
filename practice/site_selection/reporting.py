@@ -247,7 +247,18 @@ def _add_candidate_section(
                     else "未标注"
                 ),
                 source.crs,
-                str(source.record_count),
+                (
+                    f"{source.record_count}/"
+                    f"{source.available_record_count if source.available_record_count is not None else '未知'}"
+                ),
+                str(feature_set.query.limit),
+                "是（数量为下界）" if source.is_truncated else "否",
+                (
+                    str(source.dataset_record_count)
+                    if source.dataset_record_count is not None
+                    else "未标注"
+                ),
+                "合成" if source.is_synthetic else "外部/正式",
                 fallback,
             ]
         )
@@ -261,12 +272,34 @@ def _add_candidate_section(
             "查询时间",
             "数据更新时间",
             "CRS",
-            "记录数",
+            "返回/可用",
+            "查询上限",
+            "截断",
+            "数据集总量",
+            "性质",
             "降级来源",
         ],
         source_rows,
-        [900, 800, 1350, 1150, 1350, 1350, 900, 600, 960],
+        [600, 550, 1000, 750, 900, 900, 600, 600, 450, 450, 550, 500, 1510],
     )
+    quality_notices = {
+        feature_set.source.quality_notice
+        for feature_set in result.poi_evidence.feature_sets
+        if feature_set.source.quality_notice is not None
+    }
+    if quality_notices:
+        _add_table_note(
+            document,
+            "数据质量边界: " + "；".join(sorted(quality_notices)),
+        )
+    if any(
+        feature_set.source.is_truncated
+        for feature_set in result.poi_evidence.feature_sets
+    ):
+        _add_table_note(
+            document,
+            "截断说明: 返回数量、密度和评分输入仅代表查询上限内的结果下界，需扩大分页或补充正式数据后复核。",
+        )
 
     if result.site_score_report is not None:
         document.add_heading("3.3 GIS+POI 组合评分", level=2)
@@ -341,7 +374,10 @@ def _add_source_section(document: DocumentType, state: AgentState) -> None:
                 f"{feature_set.source.dataset_version or 'unversioned'}:"
                 f"queried_at={feature_set.source.queried_at.isoformat()}:"
                 "dataset_updated_at="
-                f"{feature_set.source.dataset_updated_at.isoformat() if feature_set.source.dataset_updated_at else 'unknown'}"
+                f"{feature_set.source.dataset_updated_at.isoformat() if feature_set.source.dataset_updated_at else 'unknown'}:"
+                f"returned={feature_set.source.record_count}:"
+                f"available={feature_set.source.available_record_count if feature_set.source.available_record_count is not None else 'unknown'}:"
+                f"truncated={str(feature_set.source.is_truncated).lower()}"
             )
             for feature_set in result.poi_evidence.feature_sets
         )

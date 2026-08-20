@@ -61,6 +61,22 @@ sequenceDiagram
 
 ## 3. 工作流状态
 
+主业务图不是自由对话式 Agent，而是一个版本化、可验证的 Agent/Skill DAG。`agent_orchestration.py` 定义白名单节点、角色、Skill 版本、依赖、并行组、关键性、LLM 使用权限和输出契约；启动时拒绝未知依赖、重复节点和循环依赖。当前计划为：
+
+```mermaid
+flowchart LR
+    I["intake / Orchestrator"] --> P["poi_evidence / POI Agent"]
+    I --> S["spatial_evidence / Spatial Agent"]
+    S --> R["policy_rules / Policy Agent"]
+    P --> M["merge_gate / Orchestrator"]
+    R --> M
+    M --> V["review / Review Agent"]
+```
+
+`poi_evidence` 与 `spatial_evidence` 属于同一 `evidence_collection` 并行组。`policy_rules` 必须等待 GIS 证据；`merge_gate` 必须同时等待 POI 和政策分支；任一关键依赖失败时，下游节点只能标记为 `failed` 或 `skipped`，不能绕过门禁继续生成结果。
+
+每次运行返回按计划顺序排列的 `AgentStepTrace`，字段包括节点、Agent 角色、Skill 名称/版本、依赖、并行组、状态、耗时和脱敏异常类型。业务图中的所有节点当前均为 `llm_allowed=false`：LLM 仍只在图外解释已完成证据，不参与 GIS 数值、POI 指标、规则命中或排序。
+
 ```mermaid
 stateDiagram-v2
     [*] --> data_pending: intake + profile routing
@@ -86,7 +102,11 @@ stateDiagram-v2
 
 ### POI
 
-`poi.py` 定义 Provider 无关的查询、记录、来源和指标契约。`poi_adapters.py` 实现确定性 Fixture。`online_poi_adapters.py` 实现高德、Overpass、限流、重试、熔断、坐标转换和显式 Fixture 降级。来源元数据记录 Provider、数据版本、查询时间、CRS 及降级原因。
+`poi.py` 定义 Provider 无关的查询、记录、来源和指标契约。`fixture_catalog.py` 从版本化目录加载每类项目 6 个候选，并在进入严格 API Schema 前移除仅供场景生成使用的 `scenario_profile`。`poi_adapters.py` 实现确定性 Fixture；它区分实际返回数、查询可用数和完整数据集记录数，并透传合成标记与质量说明。`online_poi_adapters.py` 实现高德、Overpass、限流、重试、熔断、Redis 缓存、坐标转换、PostGIS 入库和显式 Fixture 降级。`site_selection_poi_provider.py` 根据 `fixture / auto / amap / overpass` 环境配置组装同一条 Adapter 链，API 与 Worker 使用相同 Provider。来源元数据记录 Provider、数据版本、查询时间、CRS、合成状态、降级原因以及结果是否被查询上限截断。
+
+当 `available_record_count > record_count` 时，来源必须标记 `is_truncated=true`。Evidence Review 添加 `poi_result_truncated` 警告，Workbench 与 DOCX 报告将数量和密度声明为下界；主来源为合成 Fixture 时添加 `poi_synthetic_source` 警告。这样“返回 100 条”不会被误读为“周边总共只有 100 条”。
+
+`scripts/generate_rich_fixtures.py` 是候选目录、POI 和空间图层的单一生成源。同一场景配置同时驱动候选中心、POI 类别数量和候选多边形，避免三份 Fixture 手工漂移。生成结果目前包含 12 个候选、478 条 POI 和 25 个类别；这些数量用于回归与比较，不声明真实覆盖率。
 
 ### 规则、RAG 与 LLM
 
@@ -94,7 +114,7 @@ stateDiagram-v2
 
 ### 可靠性与人工复核
 
-Redis 保存运行状态、幂等记录、POI 缓存和事件，每类键都有命名空间与 TTL。RQ 使用独立 Redis 连接和固定队列名；任务载荷只有 `run_id` 与经过 Schema 序列化的业务请求，不包含数据库、Redis 或 LLM 凭据。规则命中、POI Fixture 降级等警告进入 `pending` 人工复核。`acknowledged` 只表示操作员已阅，事件中固定记录 `acknowledgement_not_compliance_approval` 边界。
+Redis 保存运行状态、幂等记录、POI 缓存和事件，每类键都有命名空间与 TTL。在线 POI 缓存键忽略运行 ID，但包含坐标、类别、半径、数量和 Provider 版本；命中后重新绑定当前查询身份。RQ 使用独立 Redis 连接和固定队列名；任务载荷只有 `run_id` 与经过 Schema 序列化的业务请求，不包含数据库、Redis、POI Key 或 LLM 凭据。规则命中、POI Fixture 降级等警告进入 `pending` 人工复核。`acknowledged` 只表示操作员已阅，事件中固定记录 `acknowledgement_not_compliance_approval` 边界。
 
 ## 5. 失败策略
 
@@ -115,3 +135,15 @@ Redis 保存运行状态、幂等记录、POI 缓存和事件，每类键都有�
 Compose 启动六个服务：API `8000`、RQ Worker、MCP `8001`、Workbench `8501`、PostGIS `5432`、Redis `6379`。API 负责校验、幂等与入队，Worker 独立执行工作流。API 与 Worker 等待 PostGIS、Redis 健康，并共享报告命名卷；MCP 和 Workbench 等待 API 健康。
 
 当前拓扑用于本地演示。生产化仍需反向代理、TLS、密钥管理、网络隔离、备份恢复、数据库连接池容量评估、集中日志和监控告警。
+
+## 7. 当前 Agent 边界与下一阶段
+
+当前已实现的是结构化、确定性的多 Agent 执行图、节点级 Trace、失败门禁、MCP 工具白名单、政策检索组件和异步运行时。尚未实现的部分不得作为现成功能表述：
+
+- 自然语言 `PlanningIntentAgent` 及结构化计划修复；
+- 会话短期记忆、项目长期记忆和不可变 `ScenarioVersion`；
+- 负责约束追加、覆盖、删除与冲突检测的 `ConstraintAgent`；
+- 将政策混合检索作为主业务图的强制依赖节点；
+- 将 LLM 解释从运行终态彻底解耦，使确定性结果先返回。
+
+后续扩展应继续遵守同一边界：LLM 生成结构化意图和证据说明，注册 Skill 执行确定性计算，硬规则与数据质量门禁拥有最终阻断权。

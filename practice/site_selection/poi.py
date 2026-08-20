@@ -72,6 +72,11 @@ class POISourceMeta(BaseModel):
     queried_at: datetime
     crs: NonEmptyString = "EPSG:4326"
     record_count: int = Field(ge=0)
+    available_record_count: int | None = Field(default=None, ge=0)
+    is_truncated: bool = False
+    dataset_record_count: int | None = Field(default=None, ge=0)
+    is_synthetic: bool = False
+    quality_notice: NonEmptyString | None = None
     fallback_from: POIProvider | None = None
     fallback_reason: NonEmptyString | None = None
 
@@ -93,6 +98,25 @@ class POISourceMeta(BaseModel):
             raise ValueError("POI 降级来源和原因必须同时提供")
         if self.fallback_from is not None and self.provider is not POIProvider.MOCK:
             raise ValueError("仅 Fixture/mock 响应可以标记为在线源降级")
+        if (
+            self.dataset_record_count is not None
+            and self.record_count > self.dataset_record_count
+        ):
+            raise ValueError("POI 查询命中数不能超过数据集总记录数")
+        if (
+            self.available_record_count is not None
+            and self.record_count > self.available_record_count
+        ):
+            raise ValueError("POI 返回数不能超过查询可用记录数")
+        if self.is_truncated != (
+            self.available_record_count is not None
+            and self.available_record_count > self.record_count
+        ):
+            raise ValueError("POI 截断标记必须与查询可用记录数一致")
+        if self.is_synthetic and self.quality_notice is None:
+            raise ValueError("合成 POI 来源必须声明质量边界")
+        if not self.is_synthetic and self.quality_notice is not None:
+            raise ValueError("非合成 POI 来源不能使用合成数据质量声明")
         return self
 
 

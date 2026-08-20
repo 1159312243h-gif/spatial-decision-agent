@@ -83,6 +83,26 @@ class RequestRateLimiter(Protocol):
     def acquire(self) -> None: ...
 
 
+class POIFeatureCache(Protocol):
+    def get_cached_poi(
+        self,
+        query: POIQuery,
+        *,
+        cache_scope: str,
+    ) -> POIFeatureSet | None: ...
+
+    def save_cached_poi(
+        self,
+        feature_set: POIFeatureSet,
+        *,
+        cache_scope: str,
+    ) -> None: ...
+
+
+class POIFeatureSink(Protocol):
+    def save(self, feature_set: POIFeatureSet) -> None: ...
+
+
 class NoopRateLimiter:
     def acquire(self) -> None:
         return None
@@ -205,6 +225,84 @@ class RetryingCircuitBreakerPOIAdapter:
                 )
 
 
+class CachedPOIAdapter:
+    """Reuse normalized Provider results while preserving the active query identity."""
+
+    def __init__(
+        self,
+        delegate: POISourceAdapter,
+        cache: POIFeatureCache,
+        *,
+        cache_scope: str,
+    ) -> None:
+        if delegate is None or cache is None:
+            raise ValueError("缓存 POI Adapter 必须配置 delegate 和 cache")
+        normalized_scope = cache_scope.strip()
+        if not normalized_scope:
+            raise ValueError("缓存 POI Adapter 的 cache_scope 不能为空")
+        self._delegate = delegate
+        self._cache = cache
+        self._cache_scope = normalized_scope
+
+    @property
+    def cache_token(self) -> str:
+        delegate_token = getattr(
+            self._delegate,
+            "cache_token",
+            type(self._delegate).__name__,
+        )
+        return f"cached:{self._cache_scope}:{delegate_token}"
+
+    def search(self, query: POIQuery) -> POIFeatureSet:
+        cached = self._cache.get_cached_poi(
+            query,
+            cache_scope=self._cache_scope,
+        )
+        if cached is not None:
+            return cached.model_copy(
+                deep=True,
+                update={"query": query.model_copy(deep=True)},
+            )
+        result = self._delegate.search(query)
+        if result.query != query:
+            raise ValueError("POI delegate 返回了与请求不一致的查询")
+        self._cache.save_cached_poi(
+            result,
+            cache_scope=self._cache_scope,
+        )
+        return result
+
+
+class PersistingPOIAdapter:
+    """Persist a successful normalized response before returning it to the workflow."""
+
+    def __init__(
+        self,
+        delegate: POISourceAdapter,
+        sink: POIFeatureSink,
+    ) -> None:
+        if delegate is None or sink is None:
+            raise ValueError("入库 POI Adapter 必须配置 delegate 和 sink")
+        self._delegate = delegate
+        self._sink = sink
+
+    @property
+    def cache_token(self) -> str:
+        delegate_token = getattr(
+            self._delegate,
+            "cache_token",
+            type(self._delegate).__name__,
+        )
+        return f"persisted:{delegate_token}"
+
+    def search(self, query: POIQuery) -> POIFeatureSet:
+        result = self._delegate.search(query)
+        if result.query != query:
+            raise ValueError("POI delegate 返回了与请求不一致的查询")
+        self._sink.save(result)
+        return result
+
+
 class GCJ02CoordinateTransformer:
     """Explicit WGS84/GCJ-02 conversion for mainland China coordinates."""
 
@@ -322,6 +420,7 @@ class AmapPOIAdapter:
             query.latitude,
         )
         records_by_id: dict[str, POIRecord] = {}
+        provider_record_count: int | None = None
         max_pages = math.ceil(query.limit / self._page_size)
         for page in range(1, max_pages + 1):
             self._rate_limiter.acquire()
@@ -331,6 +430,18 @@ class AmapPOIAdapter:
                 center_latitude=center_latitude,
                 page=page,
             )
+            raw_count = payload.get("count")
+            if raw_count is not None:
+                try:
+                    parsed_count = int(raw_count)
+                except (TypeError, ValueError) as exc:
+                    raise POIResponseError("高德 POI count 无效") from exc
+                if parsed_count < 0:
+                    raise POIResponseError("高德 POI count 不能为负数")
+                provider_record_count = max(
+                    provider_record_count or 0,
+                    parsed_count,
+                )
             pois = payload.get("pois")
             if not isinstance(pois, list):
                 raise POIResponseError("高德 POI 响应缺少 pois 列表")
@@ -348,6 +459,10 @@ class AmapPOIAdapter:
             records_by_id.values(),
             key=lambda item: (item.distance_m or 0, item.poi_id),
         )[: query.limit]
+        available_record_count = max(
+            provider_record_count or 0,
+            len(records_by_id),
+        )
         source = POISourceMeta(
             provider=POIProvider.AMAP,
             dataset_id="amap-place-around",
@@ -355,6 +470,8 @@ class AmapPOIAdapter:
             queried_at=self._clock(),
             crs="EPSG:4326",
             record_count=len(records),
+            available_record_count=available_record_count,
+            is_truncated=available_record_count > len(records),
         )
         return POIFeatureSet(
             query=query.model_copy(deep=True),
@@ -445,6 +562,8 @@ class AmapPOIAdapter:
                 "source": "amap",
                 "source_id": source_id,
                 "source_crs": "GCJ-02",
+                "source_longitude": gcj_longitude,
+                "source_latitude": gcj_latitude,
                 "address": raw.get("address"),
                 "type": raw.get("type"),
                 "typecode": raw.get("typecode"),
@@ -541,6 +660,7 @@ class OverpassPOIAdapter:
             records_by_id.values(),
             key=lambda item: (item.distance_m or 0, item.poi_id),
         )[: query.limit]
+        available_record_count = len(records_by_id)
         source = POISourceMeta(
             provider=POIProvider.OSM,
             dataset_id="openstreetmap-overpass",
@@ -548,6 +668,8 @@ class OverpassPOIAdapter:
             queried_at=self._clock(),
             crs="EPSG:4326",
             record_count=len(records),
+            available_record_count=available_record_count,
+            is_truncated=available_record_count > len(records),
         )
         return POIFeatureSet(
             query=query.model_copy(deep=True),
