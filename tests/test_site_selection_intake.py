@@ -44,7 +44,7 @@ def request_for(
 
 @pytest.mark.parametrize(
     "project_type",
-    [ProjectType.SHOPPING_MALL, ProjectType.LOGISTICS_PARK],
+    list(ProjectType),
 )
 def test_router_selects_the_matching_profile(project_type: ProjectType) -> None:
     profile = ProjectTypeRouter().route(request_for(project_type))
@@ -100,6 +100,30 @@ def test_queries_follow_logistics_park_profile() -> None:
     ]
     assert queries[0].categories == ["高速收费站", "高速出入口"]
     assert queries[0].radius_m == 15_000
+
+
+def test_retail_queries_follow_store_specific_profiles() -> None:
+    coffee = get_project_profile(ProjectType.COFFEE_SHOP)
+    convenience = get_project_profile(ProjectType.CONVENIENCE_STORE)
+
+    coffee_queries = build_poi_queries(
+        request_for(ProjectType.COFFEE_SHOP), coffee
+    )
+    convenience_queries = build_poi_queries(
+        request_for(ProjectType.CONVENIENCE_STORE), convenience
+    )
+
+    assert {query.group_key for query in coffee_queries} != {
+        query.group_key for query in convenience_queries
+    }
+    assert next(
+        query for query in coffee_queries if query.group_key == "coffee_competition"
+    ).categories == ["咖啡馆"]
+    assert next(
+        query
+        for query in convenience_queries
+        if query.group_key == "convenience_competition"
+    ).categories == ["便利店", "超市"]
 
 
 def test_each_parcel_gets_every_profile_query_group() -> None:

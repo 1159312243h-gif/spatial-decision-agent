@@ -19,14 +19,14 @@
 
 | 能力域 | 已完成内容 | 当前使用方式 |
 |---|---|---|
-| 项目受理 | 商场、物流园两类 Profile，输入完整性检查，项目类型路由 | HTTP、Workbench、领域服务 |
+| 项目受理 | 咖啡店、便利店、商场、物流园四类 Profile，输入完整性检查，项目类型路由 | HTTP、Workbench、领域服务 |
 | Agent 编排 | 五类 Agent 角色、六个白名单 Skill 节点、版本化 DAG 与节点 Trace | LangGraph 默认业务工作流 |
 | 并行执行 | POI 与 Spatial 同组并行，Policy 依赖 Spatial，Merge 同时等待 POI 与 Policy | `AgentExecutionPlan` 强制依赖 |
 | GIS | CRS、单位、几何、字段校验；面积、相交、缓冲、最近距离 | GeoPandas 与 PostGIS |
 | 空间存储 | 项目、图层、要素的 PostGIS Schema、迁移、Repository、空间索引 | Fixture 启动时写入并读取 |
-| POI | 12 个候选、478 条合成 POI；Fixture/高德/Overpass；缓存、重试、熔断、降级、去重入库 | Compose 可选 `fixture/auto/amap/overpass` |
+| POI | 24 个候选、1,157 条合成 POI；Fixture/高德/Overpass；缓存、重试、熔断、降级、去重入库 | Compose 可选 `fixture/auto/amap/overpass` |
 | 坐标治理 | WGS84 与 GCJ-02 显式转换；禁止把 GCJ-02 冒充 EPSG:4326 | 在线高德 Adapter 边界 |
-| 规则 | YAML/JSON 规则包、有效期、版本冲突检查、空间观察映射 | 两类 Fixture 规则包 |
+| 规则 | YAML/JSON 规则包、有效期、版本冲突检查、空间观察映射 | 四类 Fixture 规则包 |
 | 政策检索 | BM25、向量相似度、RRF 融合、来源引用 | MCP `policy_search` 工具 |
 | 证据审查 | 检查 GIS、POI、政策、评分、来源、截断和合成数据边界 | 工作流完成前强制执行 |
 | 人工复核 | `not_required/pending/acknowledged`，确认已阅写审计事件 | API 与 Workbench |
@@ -181,7 +181,7 @@ API 和 Worker 使用同一套业务代码，但启动模式不同：API 的 `SI
 2. 把运行模式强制改为 `sync`；
 3. 调用 `build_site_selection_bootstrap_from_environment(include_mcp=False)`；
 4. 连接 PostGIS 和 Redis；
-5. 装配两类 Fixture Runtime、报告存储和可选 LLM Explainer；
+5. 装配四类 Fixture Runtime、报告存储和可选 LLM Explainer；
 6. 重新用 `SiteSelectionAnalysisCreate` 校验队列载荷；
 7. 调用 `SiteSelectionRunService.execute_run()`。
 
@@ -352,7 +352,7 @@ skipped -> 依赖未满足，不伪装成成功
 |---|---|---|
 | `practice/site_selection/__init__.py` | 公共对象再导出 | 作为领域包的公开门面，让应用层不需要了解每个内部模块路径；不承载业务执行逻辑 |
 | `practice/site_selection/domain.py` | `ProjectType`、`CandidateParcel`、`ProjectRequest`、`DatasetManifest` | 最基础的项目、候选地和数据清单模型；拒绝未知字段、重复地块和无时区时间 |
-| `profiles.py` | `ProjectProfile`、两类 Profile、`get_project_profile()` | 定义每类项目的 POI 分组、半径、指标和权重；返回深拷贝避免运行时修改全局配置 |
+| `profiles.py` | `ProjectProfile`、四类 Profile、`get_project_profile()` | 定义每类项目的 POI 分组、半径、指标和权重；返回深拷贝避免运行时修改全局配置 |
 | `intake.py` | `ProfileRegistry`、`ProjectTypeRouter`、`build_poi_queries()`、`ProjectIntakeSkill` | 完成项目路由并为每个地块生成确定性 POI 查询，创建初始 `data_pending` 状态 |
 | `preflight.py` | `SiteSelectionDraft`、`PreflightDecision`、`evaluate_site_selection_draft()` | 面向不完整输入，返回 ready/needs_input/unsupported，不猜缺失值 |
 | `constraints.py` | `ConstraintLayerSpec`、`ConstraintObservation` | 定义相交/距离空间约束及其可审计观察结果 |
@@ -391,7 +391,7 @@ skipped -> 依赖未满足，不伪装成成功
 |---|---|---|
 | `poi.py` | `POIQuery`、`POIRecord`、`POISourceMeta`、`POIFeatureSet` | Provider 无关契约；区分返回数、可用数、数据集总量，强制截断标记与计数一致 |
 | `poi_service.py` | `POIGateway`、`calculate_poi_metrics()`、`execute_poi_queries()` | 执行标准化查询并计算数量、密度和距离指标 |
-| `poi_adapters.py` | `FixturePOIAdapter`、`haversine_distance_m()` | 从 478 条确定性 Fixture 过滤类别和半径，在切片前统计可用数并记录截断 |
+| `poi_adapters.py` | `FixturePOIAdapter`、`haversine_distance_m()` | 从 1,157 条确定性 Fixture 过滤类别和半径，在切片前统计可用数并记录截断 |
 | `online_poi_adapters.py` | `AmapPOIAdapter`、`OverpassPOIAdapter`、`GCJ02CoordinateTransformer` | 在线分页、类别映射、速率限制、响应校验和坐标转换 |
 | `online_poi_adapters.py` | `RetryingCircuitBreakerPOIAdapter`、`FallbackPOIAdapter`、`CachedPOIAdapter`、`PersistingPOIAdapter` | 只对可用性错误重试/熔断/显式降级；缓存复用、入库和畸形响应阻断 |
 | `fixture_catalog.py` | `FixtureCandidateCatalog`、`load_fixture_candidate_catalog()` | 按项目类型加载各 6 个候选并移除仅用于生成数据的场景字段，向 Workbench 提供质量声明 |
@@ -450,25 +450,27 @@ RAG 和规则引擎不是同一件事：RAG 用来找相关原文，规则引擎
 | `scripts/generate_site_selection_report.py` | `main()` | 从受支持输入生成选址 DOCX 报告 |
 | `scripts/run_day26_evaluations.py` | `main()` | 运行 24 条冻结评测并写机器可读 JSON |
 | `scripts/benchmark_day26.py` | `main()` | 运行 Fixture 性能采样并写结果，不代表生产容量 |
-| `scripts/generate_rich_fixtures.py` | `build_payloads()`、`main()` | 从同一场景配置确定性生成候选、478 条 POI 和空间图层，防止多份 Fixture 漂移 |
+| `scripts/generate_rich_fixtures.py` | `build_payloads()`、`main()` | 从同一场景配置确定性生成候选、1,157 条 POI 和空间图层，防止多份 Fixture 漂移 |
 | `scripts/smoke_postgis_gateway.py` | `main()` | 用真实 PostGIS 临时空间表验证 Gateway |
 | `scripts/smoke_storage_repositories.py` | `main()` | 验证项目、图层、要素、POI 写读和去重 |
 | `scripts/smoke_spatial_query_parity.py` | `main()` | 比较 GeoPandas 和 PostGIS 面积/相交/距离语义 |
 | `scripts/smoke_redis_state.py` | `main()` | 验证 Redis namespace、状态和 TTL |
 | `scripts/smoke_site_selection_redis_runtime.py` | `main()` | 验证运行状态、事件、缓存和 Compose 密码加载 |
-| `scripts/smoke_day24_fixture_runtime.py` | `main()` | 验证双 Profile、多候选、报告、六个 MCP 工具和异步轮询 |
+| `scripts/smoke_day24_fixture_runtime.py` | `main()` | 验证四种 Profile、多候选、报告、六个 MCP 工具和异步轮询 |
 | `scripts/smoke_day27_async_runtime.py` | `main()` | 专门验证 HTTP 202、RQ Worker、完整事件链和共享 DOCX |
 
 ## 7. 数据文件和运行配置
 
 | 文件 | 内容 | 边界 |
 |---|---|---|
-| `data/fixtures/candidates.json` | 商场 6 个、物流园 6 个差异化候选 | 场景画像只用于确定性数据生成，不是现实地块调查 |
-| `data/fixtures/poi.json` | 478 条、25 类合成 POI | 用于回归与候选差异比较，不代表城市真实覆盖 |
-| `data/fixtures/spatial_layers.json` | 12 个候选要素和两类约束场景 | 用于启动播种和稳定演示 |
+| `data/fixtures/candidates.json` | 咖啡店、便利店、商场、物流园各 6 个差异化候选 | 场景画像只用于确定性数据生成，不是现实地块调查 |
+| `data/fixtures/poi.json` | 1,157 条、30 类合成 POI | 用于回归与候选差异比较，不代表城市真实覆盖或客流 |
+| `data/fixtures/spatial_layers.json` | 24 个候选要素和四类约束场景 | 用于启动播种和稳定演示 |
 | `data/fixtures/rules.shopping_mall.yaml` | 商场 Fixture 规则 | 阈值和政策均非生产配置 |
 | `data/fixtures/rules.logistics_park.yaml` | 物流园 Fixture 规则 | 同上 |
-| `data/fixtures/policies.json` | 合成政策语料 | 用于演示 RAG 引用链 |
+| `data/fixtures/rules.coffee_shop.yaml` | 咖啡店经营适配 Fixture 规则 | 只触发人工复核，不生成可开店结论 |
+| `data/fixtures/rules.convenience_store.yaml` | 便利店经营适配 Fixture 规则 | 同上 |
+| `data/fixtures/policies.json` | 5 份合成政策语料，覆盖四类项目 | 用于演示 RAG 引用链，不代表真实政策 |
 | `.env.example` | 本地环境模板 | 不包含真实密钥 |
 | `compose.yaml` | 六服务拓扑、健康依赖、共享卷和 API/Worker 一致的 POI 配置 | 默认 Fixture + 异步运行，可显式切换在线 Provider |
 | `requirements.txt` | FastAPI、LangGraph、GIS、PostGIS、Redis、RQ、MCP、Streamlit 等依赖 | 修改后 Docker 会重建 pip 层 |
@@ -568,7 +570,8 @@ RQ `job_timeout` 控制单任务上限。失败回调根据异常类型名是否
 | `test_parallel_site_selection_workflow.py` | POI/Spatial 并发、六节点成功轨迹和分支失败后的 skipped/failed 传播 |
 | `test_spatial_*.py` | CRS、几何、哈希、File/PostGIS Gateway、查询一致性 |
 | `test_poi_*.py` | Fixture、指标、评分、标准化、Repository |
-| `test_rich_fixture_catalog.py` | 12 个候选、478 条 POI、生成器一致性和差异化评分 |
+| `test_rich_fixture_catalog.py` | 24 个候选、1,157 条 POI、生成器一致性和差异化评分 |
+| `test_retail_site_selection.py` | 门店画像差异、竞品评分方向、在线类别映射和人工复核规则 |
 | `test_site_selection_poi_provider.py` | `fixture/auto/amap/overpass` 选择、缓存、持久化和配置错误 |
 | `test_online_poi_adapters.py` | 高德/Overpass、GCJ-02、重试、熔断、降级和截断计数 |
 | `test_rule_*.py`、`test_policy_rag.py` | 规则版本、政策发现和混合检索引用 |
@@ -588,16 +591,16 @@ RQ `job_timeout` 控制单任务上限。失败回调根据异常类型名是否
 - `smoke_storage_repositories.py`：真实 PostGIS 项目/图层/POI 写读和去重；
 - `smoke_redis_state.py`：真实 Redis namespace 与 TTL；
 - `smoke_spatial_query_parity.py`：GeoPandas/PostGIS 结果一致性；
-- `smoke_day24_fixture_runtime.py`：双项目、多候选、报告和 MCP；
+- `smoke_day24_fixture_runtime.py`：四种项目、多候选、报告和 MCP；
 - `smoke_day27_async_runtime.py`：HTTP 202、RQ Worker、事件链和共享报告。
 
-当前提交 `4c110cc` 在 Windows/Python 3.12 下完整回归为 `473 passed in 10.20s`。其中新增覆盖不是为了追求测试数量，而是固定三类高风险语义：Agent 依赖不能被绕过、POI 上限不能冒充完整总量、合成来源不能冒充现实证据。
+本次门店选址增量在主仓库基线叠加副本中完成 `486 passed` 全量回归。新增覆盖不追求测试数量，而是固定四类高风险语义：Agent 依赖不能被绕过、POI 上限不能冒充完整总量、合成来源不能冒充现实证据、竞品数量不能被错误地按“越多越好”评分。
 
 ## 13. 当前确实存在的边界
 
 ### 13.1 当前不是现实选址数据产品
 
-478 条 Fixture POI、12 个候选、合成图层、规则和政策能证明多候选工程链路与差异化比较，但仍不足以支持真实密度、竞争度、可达性或合规判断。数量更多解决的是测试代表性，不会自动产生现实可信度。
+1,157 条 Fixture POI、24 个候选、合成图层、规则和政策能证明多场景工程链路与差异化比较，但仍不足以支持真实客流、密度、竞争度、可达性或合规判断。数量更多解决的是测试代表性，不会自动产生现实可信度。
 
 ### 13.2 在线 POI 已接入运行时，但默认仍是可复现 Fixture
 
@@ -676,7 +679,7 @@ MCP `policy_search` 能检索合成政策，但核心规则来自已审核 RuleP
 
 > 我没有把 Agent 设计成一个可以任意调用工具的聊天机器人，而是把它实现为版本化、可审计的 Agent/Skill DAG。POI 与 GIS 无依赖并行，政策规则严格依赖 GIS 观察，Merge 和 Review 作为证据门禁；每个节点都有 Pydantic 输入输出、Skill 版本、失败状态和耗时 Trace。LLM 被隔离在确定性工作流之后，只负责证据说明，不参与空间计算和硬规则判定。
 
-## 17. 产品价值、竞品差异与门店选址扩展
+## 17. 产品价值、竞品差异与门店选址实现
 
 ### 17.1 面试官问“这个选址 Agent 有什么用”
 
@@ -736,15 +739,16 @@ MCP `policy_search` 能检索合成政策，但核心规则来自已审核 RuleP
 | 物流园选址 | 物流企业、园区开发方 | 园区候选地块 | 高速、铁路、港口、产业配套、敏感目标、土地与交通条件 |
 | 门店选址 | 连锁品牌、小微经营者 | 商圈、街区或具体铺位 | 步行可达性、目标客群代理、竞品、互补业态、租金和经营成本 |
 
-`shopping_mall` 不能直接代替门店选址。大型商业综合体关注土地、规划与城市级影响；咖啡店、便利店等小型门店关注步行商圈、竞争密度、需求代理和成本。正确做法是保留现有两种 Project Profile，再新增 `retail_store` 及其业务子类型。
+`shopping_mall` 不能直接代替门店选址。大型商业综合体关注土地、规划与城市级影响；咖啡店、便利店等小型门店关注步行商圈、竞争密度、需求代理和成本。当前代码保留原有两种 Profile，并先以两个独立叶子类型落地门店场景；这样每个门店类型都能绑定完整的查询、评分、图层、规则和运行时，不需要先重构现有注册表。
 
 ```text
-retail_store
-  coffee_shop
-  convenience_store
-  restaurant
-  pharmacy
-  gym
+site_selection
+  retail_store（产品分组）
+    coffee_shop（已实现）
+    convenience_store（已实现）
+    restaurant / pharmacy / gym（待扩展）
+  shopping_mall（保留）
+  logistics_park（保留）
 ```
 
 ### 17.4 普通用户怎样使用门店选址
@@ -779,17 +783,26 @@ flowchart LR
 - **轻量模式**：店铺类型、预算和区域表单，地图展示候选及“为什么”；
 - **专业模式**：保留数据版本、CRS、规则、Agent Trace、权重和人工复核。
 
-### 17.5 门店选址需要增加哪些能力
+### 17.5 门店选址已完成与后续能力
 
-建议按以下顺序实现，而不是继续单纯增加 Fixture 数量：
+当前已经完成：
 
-1. 新增 `retail_store` Profile 和咖啡店、便利店等子类型配置；
-2. 增加 Candidate Discovery，从城市网格、商圈或铺位数据生成候选，而不只接受用户手工输入；
-3. 用路网等时圈代替简单圆形半径，计算 5/10/15 分钟步行或驾车覆盖；
-4. 增加竞品、同品牌蚕食和互补业态指标；
-5. 接入人口、办公、居住、租金和历史经营数据；
-6. 增加权重敏感性分析，说明排名是否对参数变化稳定；
-7. 为不同店铺类型建立独立评测集和校准记录。
+1. 咖啡店与便利店独立 Project Profile、运行时和 Workbench 入口；
+2. 各 6 个候选场景、独立空间图层和人工复核规则包；
+3. 店型特定的需求代理、交通、竞品和互补业态查询；
+4. 竞品数量“越少越好”、最近竞品“越远越好”的反向评分；
+5. 书店、公园、便利店、超市和停车场的受控 Overpass 映射；
+6. PostGIS 向前迁移，允许四种项目类型入库；
+7. Profile、生成器、运行时、完整工作流和 UI 契约回归。
+
+下一步仍应按业务价值继续推进，而不是只增加 Fixture 数量：
+
+1. 增加 Candidate Discovery，从城市网格、商圈或铺位数据生成候选，而不只接受用户手工输入；
+2. 用路网等时圈代替简单圆形半径，计算 5/10/15 分钟步行或驾车覆盖；
+3. 增加同品牌蚕食、租金和经营成本指标；
+4. 接入人口、办公、居住、客流和历史经营授权数据；
+5. 增加权重敏感性分析，说明排名是否对参数变化稳定；
+6. 为不同店铺类型建立独立评测集和校准记录。
 
 在 Agent 图中可以新增 `CandidateDiscoverySkill`、`MarketEvidenceSkill`、`CompetitionSkill`、`AccessibilitySkill` 和 `CostEvidenceSkill`。这些节点仍应由版本化计划选择和约束，不应允许 LLM 任意拼接未经审核的工具。
 
@@ -810,7 +823,7 @@ flowchart LR
 
 ### 17.7 面试回答的完整版本
 
-> 我做的不是一个在地图上搜索 POI 的聊天机器人，而是一套可审计的空间选址决策 Agent。当前它支持商业综合体和物流园：用户提交多个候选后，系统自动校验空间数据，并行收集 POI 与 GIS 证据，在 GIS 结果基础上执行政策规则，再完成候选评分、证据审查和报告。相比地图搜索，它能批量比较并解释依据；相比传统 GIS，它把重复流程自动化；相比通用大模型，它把面积、距离、规则和评分交给确定性工具，LLM 只解释证据。项目目前偏 To G 和专业 To B，下一步会保留两种现有场景并增加 `retail_store`，让咖啡店、便利店等经营者输入店铺类型、预算和目标区域，分析交通、潜在需求代理、竞争门店和互补业态。不过我不会把 POI 直接包装成真实客流，成熟商业平台在数据资产上仍然更强；这个项目的核心优势是可扩展、可私有部署和全过程可追踪。
+> 我做的不是一个在地图上搜索 POI 的聊天机器人，而是一套可审计的空间选址决策 Agent。当前它同时支持咖啡店、便利店、商业综合体和物流园：用户提交多个候选后，系统自动校验空间数据，并行收集 POI 与 GIS 证据，在 GIS 结果基础上执行规则，再完成候选评分、证据审查和报告。门店类型会真实改变需求代理、交通、竞品和互补业态模型，其中竞品按“数量越少、距离越远越好”评分。相比地图搜索，它能批量比较并解释依据；相比传统 GIS，它把重复流程自动化；相比通用大模型，它把面积、距离、规则和评分交给确定性工具，LLM 只解释证据。我不会把 POI 包装成真实客流，成熟商业平台在数据资产上仍然更强；这个项目的核心优势是可扩展、可私有部署和全过程可追踪。
 
 ## 18. 一句话总结
 

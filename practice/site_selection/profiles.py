@@ -161,9 +161,123 @@ LOGISTICS_PARK_PROFILE = ProjectProfile(
 )
 
 
+COFFEE_SHOP_PROFILE = ProjectProfile(
+    project_type=ProjectType.COFFEE_SHOP,
+    display_name="咖啡店",
+    poi_groups=[
+        POICategoryConfig(
+            group_key="transit_access",
+            display_name="交通便利度",
+            categories=["地铁站", "公交站"],
+            query_radius_m=1_200,
+            metrics=[POIMetric.COUNT, POIMetric.NEAREST_DISTANCE_M],
+            soft_score_weight=0.20,
+        ),
+        POICategoryConfig(
+            group_key="office_demand_proxy",
+            display_name="办公需求代理指标",
+            categories=["写字楼", "产业园"],
+            query_radius_m=1_500,
+            metrics=[POIMetric.COUNT, POIMetric.DENSITY_PER_SQ_KM],
+            soft_score_weight=0.20,
+        ),
+        POICategoryConfig(
+            group_key="residential_demand_proxy",
+            display_name="居住需求代理指标",
+            categories=["住宅小区", "公寓"],
+            query_radius_m=1_500,
+            metrics=[POIMetric.COUNT, POIMetric.DENSITY_PER_SQ_KM],
+            soft_score_weight=0.15,
+        ),
+        POICategoryConfig(
+            group_key="complementary_commerce",
+            display_name="互补业态",
+            categories=["餐厅", "书店", "购物中心"],
+            query_radius_m=1_200,
+            metrics=[POIMetric.COUNT, POIMetric.AVERAGE_DISTANCE_M],
+            soft_score_weight=0.15,
+        ),
+        POICategoryConfig(
+            group_key="coffee_competition",
+            display_name="咖啡同业竞争密度",
+            categories=["咖啡馆"],
+            query_radius_m=1_000,
+            metrics=[POIMetric.COUNT, POIMetric.NEAREST_DISTANCE_M],
+            soft_score_weight=0.20,
+        ),
+        POICategoryConfig(
+            group_key="stay_environment",
+            display_name="停留环境代理指标",
+            categories=["公园", "文化场馆"],
+            query_radius_m=1_500,
+            metrics=[POIMetric.COUNT, POIMetric.NEAREST_DISTANCE_M],
+            soft_score_weight=0.10,
+        ),
+    ],
+)
+
+
+CONVENIENCE_STORE_PROFILE = ProjectProfile(
+    project_type=ProjectType.CONVENIENCE_STORE,
+    display_name="便利店",
+    poi_groups=[
+        POICategoryConfig(
+            group_key="residential_demand_proxy",
+            display_name="居住需求代理指标",
+            categories=["住宅小区", "公寓"],
+            query_radius_m=1_000,
+            metrics=[POIMetric.COUNT, POIMetric.DENSITY_PER_SQ_KM],
+            soft_score_weight=0.25,
+        ),
+        POICategoryConfig(
+            group_key="office_school_demand_proxy",
+            display_name="办公与学校需求代理指标",
+            categories=["写字楼", "学校"],
+            query_radius_m=1_200,
+            metrics=[POIMetric.COUNT, POIMetric.DENSITY_PER_SQ_KM],
+            soft_score_weight=0.20,
+        ),
+        POICategoryConfig(
+            group_key="transit_access",
+            display_name="交通便利度",
+            categories=["地铁站", "公交站"],
+            query_radius_m=1_000,
+            metrics=[POIMetric.COUNT, POIMetric.NEAREST_DISTANCE_M],
+            soft_score_weight=0.15,
+        ),
+        POICategoryConfig(
+            group_key="complementary_services",
+            display_name="互补生活服务",
+            categories=["餐厅", "医院", "快递网点"],
+            query_radius_m=1_000,
+            metrics=[POIMetric.COUNT, POIMetric.AVERAGE_DISTANCE_M],
+            soft_score_weight=0.10,
+        ),
+        POICategoryConfig(
+            group_key="convenience_competition",
+            display_name="便利零售竞争密度",
+            categories=["便利店", "超市"],
+            query_radius_m=800,
+            metrics=[POIMetric.COUNT, POIMetric.NEAREST_DISTANCE_M],
+            soft_score_weight=0.20,
+        ),
+        POICategoryConfig(
+            group_key="parking_access",
+            display_name="停车与车辆服务便利度",
+            categories=["停车场", "加油站"],
+            query_radius_m=1_200,
+            metrics=[POIMetric.COUNT, POIMetric.NEAREST_DISTANCE_M],
+            soft_score_weight=0.10,
+        ),
+    ],
+)
+
+
 PROJECT_PROFILES: dict[ProjectType, ProjectProfile] = {
     ProjectType.SHOPPING_MALL: SHOPPING_MALL_PROFILE,
     ProjectType.LOGISTICS_PARK: LOGISTICS_PARK_PROFILE,
+    ProjectType.COFFEE_SHOP: COFFEE_SHOP_PROFILE,
+    ProjectType.CONVENIENCE_STORE: CONVENIENCE_STORE_PROFILE,
 }
 
 

@@ -330,6 +330,28 @@ def build_fixture_runtime_registry(
             poi_adapter=active_poi_adapter,
             spatial_seed=spatial_seed,
         ),
+        ProjectType.COFFEE_SHOP: _build_fixture_runtime(
+            ProjectType.COFFEE_SHOP,
+            candidate_layer=layer_by_id["demo-coffee-candidates"],
+            constraint_layer=layer_by_id["demo-coffee-constraints"],
+            constraint_id="retail-land-use-observation",
+            constraint_type=ConstraintLayerType.LAND_USE,
+            rule_path=root / "rules.coffee_shop.yaml",
+            gateway=gateway,
+            poi_adapter=active_poi_adapter,
+            spatial_seed=spatial_seed,
+        ),
+        ProjectType.CONVENIENCE_STORE: _build_fixture_runtime(
+            ProjectType.CONVENIENCE_STORE,
+            candidate_layer=layer_by_id["demo-convenience-candidates"],
+            constraint_layer=layer_by_id["demo-convenience-constraints"],
+            constraint_id="retail-land-use-observation",
+            constraint_type=ConstraintLayerType.LAND_USE,
+            rule_path=root / "rules.convenience_store.yaml",
+            gateway=gateway,
+            poi_adapter=active_poi_adapter,
+            spatial_seed=spatial_seed,
+        ),
     }
     return SiteSelectionRuntimeRegistry(runtimes)
 
@@ -575,15 +597,7 @@ def _fixture_poi_scoring_config(project_type: ProjectType) -> POIScoringConfig:
                 metric_rules=[
                     POIMetricScoringRule(
                         metric=metric,
-                        direction=(
-                            ScoreDirection.LOWER_IS_BETTER
-                            if metric
-                            in {
-                                POIMetric.NEAREST_DISTANCE_M,
-                                POIMetric.AVERAGE_DISTANCE_M,
-                            }
-                            else ScoreDirection.HIGHER_IS_BETTER
-                        ),
+                        direction=_fixture_metric_direction(group, metric),
                         lower_bound=0,
                         upper_bound=_fixture_metric_upper_bound(group, metric),
                         weight=metric_weight,
@@ -611,9 +625,7 @@ def _fixture_site_scoring_config(project_type: ProjectType) -> SiteScoringConfig
                 metric_key="area_hectares",
                 direction=ScoreDirection.HIGHER_IS_BETTER,
                 lower_bound=0,
-                upper_bound=(
-                    2 if project_type is ProjectType.SHOPPING_MALL else 5
-                ),
+                upper_bound=_fixture_area_upper_bound(project_type),
                 weight=1,
                 missing_policy=MissingMetricPolicy.BLOCK,
             )
@@ -629,6 +641,36 @@ def _fixture_metric_upper_bound(group: Any, metric: POIMetric) -> float:
         radius_km = group.query_radius_m / 1_000
         return target_count / (pi * radius_km * radius_km)
     return float(group.query_radius_m)
+
+
+def _fixture_metric_direction(group: Any, metric: POIMetric) -> ScoreDirection:
+    distance_metrics = {
+        POIMetric.NEAREST_DISTANCE_M,
+        POIMetric.AVERAGE_DISTANCE_M,
+    }
+    is_competition = group.group_key == "competitor" or group.group_key.endswith(
+        "_competition"
+    )
+    if is_competition:
+        return (
+            ScoreDirection.HIGHER_IS_BETTER
+            if metric in distance_metrics
+            else ScoreDirection.LOWER_IS_BETTER
+        )
+    return (
+        ScoreDirection.LOWER_IS_BETTER
+        if metric in distance_metrics
+        else ScoreDirection.HIGHER_IS_BETTER
+    )
+
+
+def _fixture_area_upper_bound(project_type: ProjectType) -> float:
+    return {
+        ProjectType.SHOPPING_MALL: 2.0,
+        ProjectType.LOGISTICS_PARK: 5.0,
+        ProjectType.COFFEE_SHOP: 0.18,
+        ProjectType.CONVENIENCE_STORE: 0.12,
+    }[project_type]
 
 
 def _required_environment(values: Mapping[str, str], name: str) -> str:

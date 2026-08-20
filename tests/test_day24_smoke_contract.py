@@ -6,9 +6,14 @@ from scripts.smoke_day24_fixture_runtime import (
 )
 
 
-def test_day24_smoke_covers_both_project_types_and_rich_fixture_candidates() -> None:
-    assert set(PAYLOADS) == {"shopping_mall", "logistics_park"}
-    assert EXPECTED_CANDIDATE_COUNT == 12
+def test_day24_smoke_covers_all_project_types_and_rich_fixture_candidates() -> None:
+    assert set(PAYLOADS) == {
+        "shopping_mall",
+        "logistics_park",
+        "coffee_shop",
+        "convenience_store",
+    }
+    assert EXPECTED_CANDIDATE_COUNT == 24
     assert all(len(item["candidate_parcels"]) == 6 for item in PAYLOADS.values())
     assert EXPECTED_MCP_TOOLS == {
         "gis_feature_area",

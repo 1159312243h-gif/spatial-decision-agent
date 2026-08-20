@@ -124,7 +124,10 @@ def measure_day26_performance(
             samples=samples,
             warmup_runs=warmup_runs,
             state="in-memory fixture corpus; deterministic embeddings",
-            input_summary={"policy_documents": 3, "top_k": 3},
+            input_summary={
+                "policy_documents": len(corpus.documents),
+                "top_k": 3,
+            },
         ),
         _measure(
             "day26_frozen_suite",
@@ -185,6 +188,6 @@ class _KeywordEmbeddingProvider:
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         return [
-            [float(text.count(term)) for term in self._terms]
+            [1.0, *(float(text.count(term)) for term in self._terms)]
             for text in texts
         ]

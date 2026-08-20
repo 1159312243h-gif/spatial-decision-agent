@@ -53,12 +53,14 @@ def test_rich_poi_fixture_has_broad_category_and_scenario_coverage() -> None:
     records = payload["records"]
     categories = Counter(item["category"] for item in records)
 
-    assert len(records) == 478
-    assert len(categories) == 25
+    assert len(records) == 1_157
+    assert len(categories) == 30
     assert min(categories.values()) >= 2
     assert {item["attributes"]["candidate_id"] for item in records} == {
         f"MALL-A{index:02d}" for index in range(1, 7)
-    } | {f"LOG-A{index:02d}" for index in range(1, 7)}
+    } | {f"LOG-A{index:02d}" for index in range(1, 7)} | {
+        f"COF-A{index:02d}" for index in range(1, 7)
+    } | {f"CVS-A{index:02d}" for index in range(1, 7)}
     assert all(item["attributes"]["synthetic"] is True for item in records)
 
 
@@ -70,6 +72,8 @@ def test_spatial_seed_matches_catalog_and_preserves_declared_areas() -> None:
     for project_type, layer_id in (
         (ProjectType.SHOPPING_MALL, "demo-mall-candidates"),
         (ProjectType.LOGISTICS_PARK, "demo-logistics-candidates"),
+        (ProjectType.COFFEE_SHOP, "demo-coffee-candidates"),
+        (ProjectType.CONVENIENCE_STORE, "demo-convenience-candidates"),
     ):
         candidates = catalog.project_candidates[project_type]
         features = layers[layer_id].features
@@ -86,6 +90,8 @@ def test_spatial_seed_matches_catalog_and_preserves_declared_areas() -> None:
 
     assert len(layers["demo-mall-constraints"].features) == 2
     assert len(layers["demo-logistics-constraints"].features) == 2
+    assert len(layers["demo-coffee-constraints"].features) == 1
+    assert len(layers["demo-convenience-constraints"].features) == 1
 
 
 def test_catalog_rejects_too_few_candidates() -> None:

@@ -123,7 +123,12 @@ def current_date(timezone: str = "Asia/Shanghai") -> dict[str, str]:
 class ProjectTypeArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    project_type: Literal["shopping_mall", "logistics_park"] = Field(
+    project_type: Literal[
+        "shopping_mall",
+        "logistics_park",
+        "coffee_shop",
+        "convenience_store",
+    ] = Field(
         description="需要查询的建设项目类型",
     )
 
@@ -136,6 +141,14 @@ PROJECT_TYPE_PROFILES: dict[str, dict[str, Any]] = {
     "logistics_park": {
         "display_name": "物流园",
         "review_focus": ["规划用地性质", "货运交通条件", "生态与耕地约束"],
+    },
+    "coffee_shop": {
+        "display_name": "咖啡店",
+        "review_focus": ["需求代理指标", "交通便利度", "同业竞争与互补业态"],
+    },
+    "convenience_store": {
+        "display_name": "便利店",
+        "review_focus": ["居住与办公需求代理", "生活服务便利度", "同业竞争"],
     },
 }
 

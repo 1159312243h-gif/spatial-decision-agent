@@ -94,7 +94,7 @@ stateDiagram-v2
 
 ### Profile 与前置检查
 
-`profiles.py` 定义两类项目的六组 POI 查询、半径、指标和软评分权重。`preflight.py` 只判断输入是否完整、项目类型是否支持，不执行 GIS 或规则判断。
+`profiles.py` 定义四类项目的六组 POI 查询、半径、指标和软评分权重。咖啡店与便利店作为独立叶子场景注册，因此门店类型会真实改变查询类别、半径和权重，而不是只改变 UI 名称。`preflight.py` 只判断输入是否完整、项目类型是否支持，不执行 GIS 或规则判断。
 
 ### 空间分析
 
@@ -106,7 +106,7 @@ stateDiagram-v2
 
 当 `available_record_count > record_count` 时，来源必须标记 `is_truncated=true`。Evidence Review 添加 `poi_result_truncated` 警告，Workbench 与 DOCX 报告将数量和密度声明为下界；主来源为合成 Fixture 时添加 `poi_synthetic_source` 警告。这样“返回 100 条”不会被误读为“周边总共只有 100 条”。
 
-`scripts/generate_rich_fixtures.py` 是候选目录、POI 和空间图层的单一生成源。同一场景配置同时驱动候选中心、POI 类别数量和候选多边形，避免三份 Fixture 手工漂移。生成结果目前包含 12 个候选、478 条 POI 和 25 个类别；这些数量用于回归与比较，不声明真实覆盖率。
+`scripts/generate_rich_fixtures.py` 是候选目录、POI 和空间图层的单一生成源。同一场景配置同时驱动候选中心、POI 类别数量和候选多边形，避免三份 Fixture 手工漂移。生成结果目前包含 24 个候选、1,157 条 POI 和 30 个类别；这些数量用于回归与比较，不声明真实覆盖率或客流。
 
 ### 规则、RAG 与 LLM
 

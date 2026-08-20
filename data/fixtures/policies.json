@@ -54,6 +54,40 @@
           "text": "物流设施分析可以记录高速出入口和货运节点距离。本条仅用于自动化测试。"
         }
       ]
+    },
+    {
+      "policy_id": "FIXTURE-POLICY-RETAIL-001",
+      "title": "合成测试门店经营适配指引",
+      "issuing_authority": "测试机构",
+      "document_number": "FIXTURE-RETAIL-001",
+      "version": "fixture-1.0",
+      "jurisdiction": "测试行政区",
+      "source_uri": "fixture://policies/retail-suitability",
+      "applicable_project_types": ["coffee_shop"],
+      "sections": [
+        {
+          "clause": "第四条（合成测试）",
+          "page_number": 6,
+          "text": "咖啡店候选位置应核验真实用地、租赁条件和经营许可；交通、需求代理和同业竞争只作为比较证据。本条仅用于自动化测试。"
+        }
+      ]
+    },
+    {
+      "policy_id": "FIXTURE-POLICY-RETAIL-002",
+      "title": "合成测试便民零售经营适配指引",
+      "issuing_authority": "测试机构",
+      "document_number": "FIXTURE-RETAIL-002",
+      "version": "fixture-1.0",
+      "jurisdiction": "测试行政区",
+      "source_uri": "fixture://policies/convenience-retail-suitability",
+      "applicable_project_types": ["convenience_store"],
+      "sections": [
+        {
+          "clause": "第五条（合成测试）",
+          "page_number": 7,
+          "text": "便利店候选位置应核验真实用地、租赁条件和经营许可；居住、办公、学校和竞品 POI 只作为需求代理证据。本条仅用于自动化测试。"
+        }
+      ]
     }
   ]
 }

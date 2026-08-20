@@ -62,26 +62,34 @@ def test_explicit_runtime_mode_and_required_connections_are_validated() -> None:
         )
 
 
-def test_spatial_fixture_declares_both_projects_and_expected_layers() -> None:
+def test_spatial_fixture_declares_all_projects_and_expected_layers() -> None:
     seed = load_fixture_spatial_seed(FIXTURE_ROOT / "spatial_layers.json")
 
     assert {project.project_type for project in seed.projects} == {
         ProjectType.SHOPPING_MALL,
         ProjectType.LOGISTICS_PARK,
+        ProjectType.COFFEE_SHOP,
+        ProjectType.CONVENIENCE_STORE,
     }
     assert {layer.layer_id for layer in seed.layers} == {
         "demo-mall-candidates",
         "demo-mall-constraints",
         "demo-logistics-candidates",
         "demo-logistics-constraints",
+        "demo-coffee-candidates",
+        "demo-coffee-constraints",
+        "demo-convenience-candidates",
+        "demo-convenience-constraints",
     }
     assert seed.crs == "EPSG:32651"
     layers = {layer.layer_id: layer for layer in seed.layers}
     assert len(layers["demo-mall-candidates"].features) == 6
     assert len(layers["demo-logistics-candidates"].features) == 6
+    assert len(layers["demo-coffee-candidates"].features) == 6
+    assert len(layers["demo-convenience-candidates"].features) == 6
 
 
-def test_fixture_registry_exposes_both_reviewed_project_types() -> None:
+def test_fixture_registry_exposes_all_reviewed_project_types() -> None:
     registry = build_fixture_runtime_registry(
         object(),
         fixture_root=FIXTURE_ROOT,
@@ -90,6 +98,8 @@ def test_fixture_registry_exposes_both_reviewed_project_types() -> None:
     assert registry.configured_types == (
         ProjectType.SHOPPING_MALL,
         ProjectType.LOGISTICS_PARK,
+        ProjectType.COFFEE_SHOP,
+        ProjectType.CONVENIENCE_STORE,
     )
     for project_type in registry.configured_types:
         runtime = registry.resolve(project_type)
@@ -103,7 +113,7 @@ def test_fixture_registry_exposes_both_reviewed_project_types() -> None:
         )
 
 
-def test_both_fixture_project_types_complete_full_workflow() -> None:
+def test_all_fixture_project_types_complete_full_workflow() -> None:
     seed = load_fixture_spatial_seed(FIXTURE_ROOT / "spatial_layers.json")
     frames = {
         layer.layer_id: gpd.GeoDataFrame(

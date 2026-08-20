@@ -23,6 +23,8 @@ NonEmptyString = Annotated[
 class ProjectType(StrEnum):
     SHOPPING_MALL = "shopping_mall"
     LOGISTICS_PARK = "logistics_park"
+    COFFEE_SHOP = "coffee_shop"
+    CONVENIENCE_STORE = "convenience_store"
 
 
 class DatasetSource(StrEnum):

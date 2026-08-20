@@ -53,8 +53,15 @@ public_api_url = (
 )
 project_type = st.sidebar.radio(
     "项目类型",
-    options=["shopping_mall", "logistics_park"],
+    options=[
+        "coffee_shop",
+        "convenience_store",
+        "shopping_mall",
+        "logistics_park",
+    ],
     format_func=lambda value: {
+        "coffee_shop": "门店选址 · 咖啡店",
+        "convenience_store": "门店选址 · 便利店",
         "shopping_mall": "商场",
         "logistics_park": "物流园",
     }[value],

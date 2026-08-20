@@ -14,7 +14,15 @@ from sqlalchemy import URL, create_engine
 from sqlalchemy.engine import Engine
 
 
-MIGRATION_PATH = PROJECT_ROOT / "deploy" / "migrations" / "001_initial.sql"
+MIGRATION_ROOT = PROJECT_ROOT / "deploy" / "migrations"
+MIGRATION_PATH = MIGRATION_ROOT / "001_initial.sql"
+
+
+def migration_paths() -> tuple[Path, ...]:
+    paths = tuple(sorted(MIGRATION_ROOT.glob("[0-9][0-9][0-9]_*.sql")))
+    if not paths:
+        raise RuntimeError("未找到 PostGIS migration")
+    return paths
 
 
 def required_environment(name: str) -> str:
@@ -46,11 +54,11 @@ def load_environment() -> None:
 
 
 def apply_migration(engine: Engine) -> None:
-    sql = MIGRATION_PATH.read_text(encoding="utf-8")
     raw_connection = engine.raw_connection()
     try:
         with raw_connection.cursor() as cursor:
-            cursor.execute(sql, prepare=False)
+            for path in migration_paths():
+                cursor.execute(path.read_text(encoding="utf-8"), prepare=False)
         raw_connection.commit()
     except Exception:
         raw_connection.rollback()
@@ -73,7 +81,7 @@ def main() -> int:
         return 1
     finally:
         engine.dispose()
-    print("PostGIS migration OK: version=001_initial")
+    print(f"PostGIS migration OK: version={migration_paths()[-1].stem}")
     return 0
 
 

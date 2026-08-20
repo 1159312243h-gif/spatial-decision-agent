@@ -450,7 +450,7 @@ class _KeywordEmbeddingProvider:
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         return [
-            [float(text.count(term)) for term in self._terms]
+            [1.0, *(float(text.count(term)) for term in self._terms)]
             for text in texts
         ]
 

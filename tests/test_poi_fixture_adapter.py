@@ -53,7 +53,7 @@ def test_fixture_has_minimum_records_and_covers_both_profiles() -> None:
         for category in group.categories
     }
 
-    assert len(dataset.records) == 478
+    assert len(dataset.records) == 1_157
     assert required_categories <= fixture_categories
     assert dataset.is_synthetic is True
     assert dataset.generation_method == "deterministic-radial-v1"
@@ -114,7 +114,7 @@ def test_source_metadata_preserves_fixture_lineage() -> None:
     assert result.source.queried_at == NOW
     assert result.source.crs == "EPSG:4326"
     assert result.source.record_count == len(result.records)
-    assert result.source.dataset_record_count == 478
+    assert result.source.dataset_record_count == 1_157
     assert result.source.is_synthetic is True
     assert "不代表真实城市覆盖率" in result.source.quality_notice
 

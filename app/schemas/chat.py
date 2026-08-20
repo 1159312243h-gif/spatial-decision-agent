@@ -11,6 +11,8 @@ NonEmptyString = Annotated[
 ProjectType = Literal[
     "shopping_mall",
     "logistics_park",
+    "coffee_shop",
+    "convenience_store",
 ]
 
 

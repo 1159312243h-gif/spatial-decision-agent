@@ -179,7 +179,7 @@ def test_policy_fixture_corpus_is_explicit_and_loadable() -> None:
 
     assert corpus.is_fixture is True
     assert corpus.version == "fixture-2026.08.1"
-    assert len(corpus.documents) == 3
+    assert len(corpus.documents) == 5
     assert all(
         document.source_uri.startswith("fixture://")
         for document in corpus.documents

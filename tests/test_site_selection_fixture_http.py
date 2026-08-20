@@ -224,7 +224,7 @@ def test_fixture_runtime_completes_http_analysis_chain() -> None:
     } == {"fixture-rich-v1"}
     assert {
         item["source"]["dataset_record_count"] for item in feature_sets
-    } == {478}
+    } == {1_157}
     assert all(item["source"]["is_synthetic"] for item in feature_sets)
     findings = result["policy_evidence"]["rule_findings"]
     assert findings[0]["rule_id"] == "RULE-FIXTURE-HTTP"

@@ -133,6 +133,118 @@ CANDIDATES: dict[str, list[dict[str, Any]]] = {
             "geometry_dataset_id": "demo-logistics-candidates",
         },
     ],
+    "coffee_shop": [
+        {
+            "parcel_id": "COF-A01",
+            "name": "咖啡店候选 A｜轨交办公核心",
+            "scenario_profile": "transit_office_core",
+            "longitude": 121.3000,
+            "latitude": 31.1500,
+            "area_hectares": 0.08,
+            "geometry_dataset_id": "demo-coffee-candidates",
+        },
+        {
+            "parcel_id": "COF-A02",
+            "name": "咖啡店候选 B｜成熟社区入口",
+            "scenario_profile": "mature_residential_gateway",
+            "longitude": 121.3300,
+            "latitude": 31.1500,
+            "area_hectares": 0.06,
+            "geometry_dataset_id": "demo-coffee-candidates",
+        },
+        {
+            "parcel_id": "COF-A03",
+            "name": "咖啡店候选 C｜文化休闲街区",
+            "scenario_profile": "culture_leisure_cluster",
+            "longitude": 121.3600,
+            "latitude": 31.1500,
+            "area_hectares": 0.12,
+            "geometry_dataset_id": "demo-coffee-candidates",
+        },
+        {
+            "parcel_id": "COF-A04",
+            "name": "咖啡店候选 D｜综合消费节点",
+            "scenario_profile": "balanced_commercial_node",
+            "longitude": 121.3000,
+            "latitude": 31.1800,
+            "area_hectares": 0.10,
+            "geometry_dataset_id": "demo-coffee-candidates",
+        },
+        {
+            "parcel_id": "COF-A05",
+            "name": "咖啡店候选 E｜同业高密街区",
+            "scenario_profile": "competition_saturated",
+            "longitude": 121.3300,
+            "latitude": 31.1800,
+            "area_hectares": 0.09,
+            "geometry_dataset_id": "demo-coffee-candidates",
+        },
+        {
+            "parcel_id": "COF-A06",
+            "name": "咖啡店候选 F｜新兴外围社区",
+            "scenario_profile": "emerging_residential_fringe",
+            "longitude": 121.3600,
+            "latitude": 31.1800,
+            "area_hectares": 0.15,
+            "geometry_dataset_id": "demo-coffee-candidates",
+        },
+    ],
+    "convenience_store": [
+        {
+            "parcel_id": "CVS-A01",
+            "name": "便利店候选 A｜高密社区入口",
+            "scenario_profile": "dense_residential_gateway",
+            "longitude": 121.3000,
+            "latitude": 31.3200,
+            "area_hectares": 0.04,
+            "geometry_dataset_id": "demo-convenience-candidates",
+        },
+        {
+            "parcel_id": "CVS-A02",
+            "name": "便利店候选 B｜办公通勤节点",
+            "scenario_profile": "office_commuter_node",
+            "longitude": 121.3300,
+            "latitude": 31.3200,
+            "area_hectares": 0.05,
+            "geometry_dataset_id": "demo-convenience-candidates",
+        },
+        {
+            "parcel_id": "CVS-A03",
+            "name": "便利店候选 C｜学校生活圈",
+            "scenario_profile": "school_living_circle",
+            "longitude": 121.3600,
+            "latitude": 31.3200,
+            "area_hectares": 0.06,
+            "geometry_dataset_id": "demo-convenience-candidates",
+        },
+        {
+            "parcel_id": "CVS-A04",
+            "name": "便利店候选 D｜交通换乘口",
+            "scenario_profile": "transit_transfer_gateway",
+            "longitude": 121.3000,
+            "latitude": 31.3500,
+            "area_hectares": 0.05,
+            "geometry_dataset_id": "demo-convenience-candidates",
+        },
+        {
+            "parcel_id": "CVS-A05",
+            "name": "便利店候选 E｜同业饱和街区",
+            "scenario_profile": "competition_saturated",
+            "longitude": 121.3300,
+            "latitude": 31.3500,
+            "area_hectares": 0.07,
+            "geometry_dataset_id": "demo-convenience-candidates",
+        },
+        {
+            "parcel_id": "CVS-A06",
+            "name": "便利店候选 F｜车辆服务节点",
+            "scenario_profile": "vehicle_service_node",
+            "longitude": 121.3600,
+            "latitude": 31.3500,
+            "area_hectares": 0.09,
+            "geometry_dataset_id": "demo-convenience-candidates",
+        },
+    ],
 }
 
 
@@ -156,11 +268,36 @@ LOGISTICS_COUNTS = [
 ]
 
 
+COFFEE_COUNTS = [
+    {"地铁站": 2, "公交站": 8, "写字楼": 12, "产业园": 2, "住宅小区": 4, "公寓": 5, "餐厅": 10, "书店": 3, "购物中心": 2, "咖啡馆": 3, "公园": 2, "文化场馆": 2},
+    {"地铁站": 1, "公交站": 6, "写字楼": 3, "产业园": 1, "住宅小区": 12, "公寓": 8, "餐厅": 7, "书店": 2, "购物中心": 1, "咖啡馆": 2, "公园": 3, "文化场馆": 1},
+    {"地铁站": 1, "公交站": 5, "写字楼": 4, "产业园": 1, "住宅小区": 5, "公寓": 4, "餐厅": 8, "书店": 6, "购物中心": 1, "咖啡馆": 4, "公园": 5, "文化场馆": 5},
+    {"地铁站": 2, "公交站": 7, "写字楼": 8, "产业园": 2, "住宅小区": 8, "公寓": 6, "餐厅": 12, "书店": 4, "购物中心": 3, "咖啡馆": 5, "公园": 3, "文化场馆": 3},
+    {"地铁站": 2, "公交站": 8, "写字楼": 9, "产业园": 2, "住宅小区": 7, "公寓": 6, "餐厅": 14, "书店": 4, "购物中心": 3, "咖啡馆": 14, "公园": 2, "文化场馆": 2},
+    {"地铁站": 0, "公交站": 3, "写字楼": 2, "产业园": 1, "住宅小区": 9, "公寓": 4, "餐厅": 4, "书店": 1, "购物中心": 0, "咖啡馆": 1, "公园": 4, "文化场馆": 1},
+]
+
+
+CONVENIENCE_COUNTS = [
+    {"住宅小区": 15, "公寓": 8, "写字楼": 3, "学校": 4, "地铁站": 1, "公交站": 7, "餐厅": 8, "医院": 2, "快递网点": 4, "便利店": 3, "超市": 2, "停车场": 4, "加油站": 1},
+    {"住宅小区": 5, "公寓": 5, "写字楼": 13, "学校": 2, "地铁站": 2, "公交站": 8, "餐厅": 10, "医院": 1, "快递网点": 3, "便利店": 4, "超市": 1, "停车场": 6, "加油站": 1},
+    {"住宅小区": 9, "公寓": 4, "写字楼": 3, "学校": 9, "地铁站": 1, "公交站": 6, "餐厅": 7, "医院": 2, "快递网点": 4, "便利店": 2, "超市": 2, "停车场": 3, "加油站": 1},
+    {"住宅小区": 7, "公寓": 5, "写字楼": 7, "学校": 3, "地铁站": 3, "公交站": 11, "餐厅": 9, "医院": 1, "快递网点": 4, "便利店": 5, "超市": 2, "停车场": 5, "加油站": 2},
+    {"住宅小区": 10, "公寓": 6, "写字楼": 8, "学校": 4, "地铁站": 2, "公交站": 7, "餐厅": 12, "医院": 2, "快递网点": 5, "便利店": 15, "超市": 7, "停车场": 4, "加油站": 1},
+    {"住宅小区": 4, "公寓": 2, "写字楼": 3, "学校": 1, "地铁站": 0, "公交站": 4, "餐厅": 5, "医院": 1, "快递网点": 2, "便利店": 1, "超市": 1, "停车场": 10, "加油站": 5},
+]
+
+
 CATEGORY_RADIUS_M = {
     "地铁站": (250, 1_200),
     "公交站": (120, 1_300),
     "餐厅": (100, 1_250),
     "咖啡馆": (100, 1_150),
+    "书店": (120, 1_100),
+    "公园": (200, 1_400),
+    "便利店": (80, 750),
+    "超市": (120, 750),
+    "停车场": (100, 1_100),
     "住宅小区": (350, 2_600),
     "公寓": (250, 2_400),
     "写字楼": (250, 2_500),
@@ -200,6 +337,8 @@ def build_poi_dataset() -> dict[str, Any]:
     for project_type, counts_by_candidate in (
         ("shopping_mall", MALL_COUNTS),
         ("logistics_park", LOGISTICS_COUNTS),
+        ("coffee_shop", COFFEE_COUNTS),
+        ("convenience_store", CONVENIENCE_COUNTS),
     ):
         for candidate, category_counts in zip(
             CANDIDATES[project_type],
@@ -221,7 +360,7 @@ def build_poi_dataset() -> dict[str, Any]:
         "crs": "EPSG:4326",
         "updated_at": UPDATED_AT,
         "is_synthetic": True,
-        "coverage_scope": "12 个合成候选地、25 个 POI 类别的场景化局部覆盖",
+        "coverage_scope": "24 个合成候选地、30 个 POI 类别的场景化局部覆盖",
         "generation_method": "deterministic-radial-v1",
         "quality_notice": QUALITY_NOTICE,
         "records": records,
@@ -238,6 +377,14 @@ def build_spatial_seed() -> dict[str, Any]:
         _candidate_feature(item, "fixture-logistics", transformer)
         for item in CANDIDATES["logistics_park"]
     ]
+    coffee_features = [
+        _candidate_feature(item, "fixture-neighborhood-commercial", transformer)
+        for item in CANDIDATES["coffee_shop"]
+    ]
+    convenience_features = [
+        _candidate_feature(item, "fixture-neighborhood-commercial", transformer)
+        for item in CANDIDATES["convenience_store"]
+    ]
     mall_constraints = [
         _constraint_feature("MALL-ECO-01", CANDIDATES["shopping_mall"][0], transformer),
         _constraint_feature("MALL-ECO-02", CANDIDATES["shopping_mall"][4], transformer),
@@ -245,6 +392,12 @@ def build_spatial_seed() -> dict[str, Any]:
     logistics_constraints = [
         _constraint_feature("LOG-SENSITIVE-01", CANDIDATES["logistics_park"][3], transformer),
         _constraint_feature("LOG-SENSITIVE-02", CANDIDATES["logistics_park"][5], transformer),
+    ]
+    coffee_constraints = [
+        _constraint_feature("COF-LANDUSE-01", CANDIDATES["coffee_shop"][4], transformer),
+    ]
+    convenience_constraints = [
+        _constraint_feature("CVS-LANDUSE-01", CANDIDATES["convenience_store"][5], transformer),
     ]
     return {
         "is_fixture": True,
@@ -254,12 +407,18 @@ def build_spatial_seed() -> dict[str, Any]:
         "projects": [
             {"project_id": "fixture-shopping-mall", "project_type": "shopping_mall", "name": "合成商场多候选评估"},
             {"project_id": "fixture-logistics-park", "project_type": "logistics_park", "name": "合成物流园多候选评估"},
+            {"project_id": "fixture-coffee-shop", "project_type": "coffee_shop", "name": "合成咖啡店多候选评估"},
+            {"project_id": "fixture-convenience-store", "project_type": "convenience_store", "name": "合成便利店多候选评估"},
         ],
         "layers": [
             _layer("demo-mall-candidates", "fixture-shopping-mall", "合成商场候选地", "candidate_parcel", "parcel_id", ["parcel_id", "land_use", "scenario_profile"], mall_features),
             _layer("demo-mall-constraints", "fixture-shopping-mall", "合成生态观察图层", "ecological_protection", "constraint_id", ["constraint_id", "level"], mall_constraints),
             _layer("demo-logistics-candidates", "fixture-logistics-park", "合成物流园候选地", "candidate_parcel", "parcel_id", ["parcel_id", "land_use", "scenario_profile"], logistics_features),
             _layer("demo-logistics-constraints", "fixture-logistics-park", "合成敏感目标观察图层", "sensitive_receptor", "constraint_id", ["constraint_id", "level"], logistics_constraints),
+            _layer("demo-coffee-candidates", "fixture-coffee-shop", "合成咖啡店候选位置", "candidate_parcel", "parcel_id", ["parcel_id", "land_use", "scenario_profile"], coffee_features),
+            _layer("demo-coffee-constraints", "fixture-coffee-shop", "合成咖啡店经营适配观察图层", "land_use", "constraint_id", ["constraint_id", "level"], coffee_constraints),
+            _layer("demo-convenience-candidates", "fixture-convenience-store", "合成便利店候选位置", "candidate_parcel", "parcel_id", ["parcel_id", "land_use", "scenario_profile"], convenience_features),
+            _layer("demo-convenience-constraints", "fixture-convenience-store", "合成便利店经营适配观察图层", "land_use", "constraint_id", ["constraint_id", "level"], convenience_constraints),
         ],
     }
 
@@ -335,11 +494,11 @@ def _candidate_feature(candidate, land_use, transformer) -> dict[str, Any]:
     x0, x1 = center_x - width / 2, center_x + width / 2
     y0, y1 = center_y - height / 2, center_y + height / 2
     coordinates = [
-        [round(x0, 3), round(y0, 3)],
-        [round(x1, 3), round(y0, 3)],
-        [round(x1, 3), round(y1, 3)],
-        [round(x0, 3), round(y1, 3)],
-        [round(x0, 3), round(y0, 3)],
+        [round(x0, 6), round(y0, 6)],
+        [round(x1, 6), round(y0, 6)],
+        [round(x1, 6), round(y1, 6)],
+        [round(x0, 6), round(y1, 6)],
+        [round(x0, 6), round(y0, 6)],
     ]
     return {
         "source_feature_id": candidate["parcel_id"],

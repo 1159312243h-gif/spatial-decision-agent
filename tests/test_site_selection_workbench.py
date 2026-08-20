@@ -229,3 +229,5 @@ def test_workbench_auto_polls_and_uses_distinct_map_layers() -> None:
     assert 'st.subheader("节点轨迹")' in source
     assert 'st.subheader("质量门禁")' in source
     assert "POI 查询达到返回上限" in source
+    assert '"coffee_shop": "门店选址 · 咖啡店"' in source
+    assert '"convenience_store": "门店选址 · 便利店"' in source

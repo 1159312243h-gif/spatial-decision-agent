@@ -1,0 +1,26 @@
+pack_id: fixture-convenience-store-rules
+version: fixture-2026.08.1
+is_fixture: true
+applicable_project_types:
+  - convenience_store
+rules:
+  - rule_id: FIXTURE-RULE-CONVENIENCE-LANDUSE-001
+    name: 合成便利店经营适配人工复核规则
+    version: fixture-1.0
+    applicable_project_types:
+      - convenience_store
+    constraint_id: retail-land-use-observation
+    expected_triggered: true
+    outcome: review_required
+    message: 命中合成经营适配观察条件，需人工核验真实用地、租赁与经营许可
+    policy:
+      policy_id: FIXTURE-POLICY-RETAIL-002
+      title: 合成测试便民零售经营适配指引
+      issuing_authority: 测试机构
+      document_number: FIXTURE-RETAIL-002
+      clause: 第五条（合成测试）
+      version: fixture-1.0
+      jurisdiction: 测试行政区
+      source_uri: fixture://policies/convenience-retail-suitability
+    valid_from: 2026-01-01
+    enabled: true

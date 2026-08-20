@@ -1,6 +1,6 @@
 {
   "report_id": "site-selection-day26-local-fixture",
-  "generated_at": "2026-08-20T02:50:55.689601Z",
+  "generated_at": "2026-08-20T07:40:44.379263Z",
   "environment": {
     "python": "3.12.13",
     "platform": "Windows-11-10.0.26200-SP0",
@@ -17,9 +17,9 @@
       "metric": "gis_geopandas_area_intersection_distance",
       "samples": 7,
       "warmup_runs": 2,
-      "median_ms": 0.124,
-      "min_ms": 0.113,
-      "max_ms": 0.17,
+      "median_ms": 0.132,
+      "min_ms": 0.111,
+      "max_ms": 0.16,
       "state": "in-memory projected fixture",
       "input_summary": {
         "candidate_features": 1,
@@ -31,12 +31,12 @@
       "metric": "poi_fixture_search",
       "samples": 7,
       "warmup_runs": 2,
-      "median_ms": 0.11,
-      "min_ms": 0.109,
-      "max_ms": 0.117,
+      "median_ms": 0.173,
+      "min_ms": 0.166,
+      "max_ms": 0.185,
       "state": "local JSON fixture; no Redis; no network",
       "input_summary": {
-        "fixture_records": 478,
+        "fixture_records": 1157,
         "radius_m": 3000,
         "categories": 2
       }
@@ -50,7 +50,7 @@
       "max_ms": 0.043,
       "state": "in-memory fixture corpus; deterministic embeddings",
       "input_summary": {
-        "policy_documents": 3,
+        "policy_documents": 5,
         "top_k": 3
       }
     },
@@ -58,9 +58,9 @@
       "metric": "day26_frozen_suite",
       "samples": 7,
       "warmup_runs": 2,
-      "median_ms": 128.542,
-      "min_ms": 123.718,
-      "max_ms": 192.795,
+      "median_ms": 196.132,
+      "min_ms": 184.603,
+      "max_ms": 242.889,
       "state": "24 deterministic cases; no live providers",
       "input_summary": {
         "cases": 24,

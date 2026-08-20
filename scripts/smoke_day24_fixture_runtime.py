@@ -149,8 +149,9 @@ def main() -> int:
         )
         return 1
     print(
-        "Day24 fixture smoke OK: project_types=2, "
-        f"candidates={EXPECTED_CANDIDATE_COUNT}, reports=2, mcp_tools=6, "
+        f"Day24 fixture smoke OK: project_types={len(PAYLOADS)}, "
+        f"candidates={EXPECTED_CANDIDATE_COUNT}, reports={len(statuses)}, "
+        "mcp_tools=6, "
         "explanation_statuses="
         + ",".join(statuses)
     )

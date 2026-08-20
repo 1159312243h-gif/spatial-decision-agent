@@ -7,6 +7,7 @@ MIGRATION = (
     / "migrations"
     / "001_initial.sql"
 )
+RETAIL_MIGRATION = MIGRATION.with_name("002_retail_project_types.sql")
 
 
 def migration_sql() -> str:
@@ -31,3 +32,26 @@ def test_geometry_columns_have_explicit_srid_and_spatial_indexes() -> None:
 
 def test_poi_identity_has_database_unique_constraint() -> None:
     assert "UNIQUE (source, source_id)" in migration_sql()
+
+
+def test_retail_migration_expands_project_type_constraint() -> None:
+    sql = RETAIL_MIGRATION.read_text(encoding="utf-8")
+
+    assert "DROP CONSTRAINT IF EXISTS projects_project_type_check" in sql
+    for project_type in (
+        "shopping_mall",
+        "logistics_park",
+        "coffee_shop",
+        "convenience_store",
+    ):
+        assert f"'{project_type}'" in sql
+    assert "002_retail_project_types" in sql
+
+
+def test_migration_runner_discovers_all_versions_in_order() -> None:
+    from scripts.apply_postgis_migrations import migration_paths
+
+    assert [path.name for path in migration_paths()] == [
+        "001_initial.sql",
+        "002_retail_project_types.sql",
+    ]

@@ -7,7 +7,7 @@
 | 字段 | 类型 | 约束 | 含义 |
 |---|---|---|---|
 | `request_id` | string | 非空 | 单次分析请求标识 |
-| `project_type` | enum | `shopping_mall` / `logistics_park` | Profile 路由键 |
+| `project_type` | enum | `coffee_shop` / `convenience_store` / `shopping_mall` / `logistics_park` | Profile 路由键 |
 | `candidate_parcels` | array | 至少 1 个，`parcel_id` 唯一 | 候选地块 |
 | `requested_at` | datetime | 必须含时区 | 请求时间 |
 
@@ -82,14 +82,14 @@
 
 ## 4. PostGIS Schema
 
-Schema 名为 `site_selection`，迁移版本为 `001_initial`。
+Schema 名为 `site_selection`，当前迁移版本为 `002_retail_project_types`。
 
 ### `projects`
 
 | 列 | PostgreSQL 类型 | 约束/索引 | 含义 |
 |---|---|---|---|
 | `project_id` | text | PK | 项目标识 |
-| `project_type` | text | CHECK 两种 Profile | 项目类型 |
+| `project_type` | text | CHECK 四种 Profile | 项目类型 |
 | `name` | text | 非空 | 项目名 |
 | `created_at`, `updated_at` | timestamptz | 非空 | 审计时间 |
 

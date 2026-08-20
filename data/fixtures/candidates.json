@@ -115,6 +115,118 @@
         "area_hectares": 2.7,
         "geometry_dataset_id": "demo-logistics-candidates"
       }
+    ],
+    "coffee_shop": [
+      {
+        "parcel_id": "COF-A01",
+        "name": "咖啡店候选 A｜轨交办公核心",
+        "scenario_profile": "transit_office_core",
+        "longitude": 121.3,
+        "latitude": 31.15,
+        "area_hectares": 0.08,
+        "geometry_dataset_id": "demo-coffee-candidates"
+      },
+      {
+        "parcel_id": "COF-A02",
+        "name": "咖啡店候选 B｜成熟社区入口",
+        "scenario_profile": "mature_residential_gateway",
+        "longitude": 121.33,
+        "latitude": 31.15,
+        "area_hectares": 0.06,
+        "geometry_dataset_id": "demo-coffee-candidates"
+      },
+      {
+        "parcel_id": "COF-A03",
+        "name": "咖啡店候选 C｜文化休闲街区",
+        "scenario_profile": "culture_leisure_cluster",
+        "longitude": 121.36,
+        "latitude": 31.15,
+        "area_hectares": 0.12,
+        "geometry_dataset_id": "demo-coffee-candidates"
+      },
+      {
+        "parcel_id": "COF-A04",
+        "name": "咖啡店候选 D｜综合消费节点",
+        "scenario_profile": "balanced_commercial_node",
+        "longitude": 121.3,
+        "latitude": 31.18,
+        "area_hectares": 0.1,
+        "geometry_dataset_id": "demo-coffee-candidates"
+      },
+      {
+        "parcel_id": "COF-A05",
+        "name": "咖啡店候选 E｜同业高密街区",
+        "scenario_profile": "competition_saturated",
+        "longitude": 121.33,
+        "latitude": 31.18,
+        "area_hectares": 0.09,
+        "geometry_dataset_id": "demo-coffee-candidates"
+      },
+      {
+        "parcel_id": "COF-A06",
+        "name": "咖啡店候选 F｜新兴外围社区",
+        "scenario_profile": "emerging_residential_fringe",
+        "longitude": 121.36,
+        "latitude": 31.18,
+        "area_hectares": 0.15,
+        "geometry_dataset_id": "demo-coffee-candidates"
+      }
+    ],
+    "convenience_store": [
+      {
+        "parcel_id": "CVS-A01",
+        "name": "便利店候选 A｜高密社区入口",
+        "scenario_profile": "dense_residential_gateway",
+        "longitude": 121.3,
+        "latitude": 31.32,
+        "area_hectares": 0.04,
+        "geometry_dataset_id": "demo-convenience-candidates"
+      },
+      {
+        "parcel_id": "CVS-A02",
+        "name": "便利店候选 B｜办公通勤节点",
+        "scenario_profile": "office_commuter_node",
+        "longitude": 121.33,
+        "latitude": 31.32,
+        "area_hectares": 0.05,
+        "geometry_dataset_id": "demo-convenience-candidates"
+      },
+      {
+        "parcel_id": "CVS-A03",
+        "name": "便利店候选 C｜学校生活圈",
+        "scenario_profile": "school_living_circle",
+        "longitude": 121.36,
+        "latitude": 31.32,
+        "area_hectares": 0.06,
+        "geometry_dataset_id": "demo-convenience-candidates"
+      },
+      {
+        "parcel_id": "CVS-A04",
+        "name": "便利店候选 D｜交通换乘口",
+        "scenario_profile": "transit_transfer_gateway",
+        "longitude": 121.3,
+        "latitude": 31.35,
+        "area_hectares": 0.05,
+        "geometry_dataset_id": "demo-convenience-candidates"
+      },
+      {
+        "parcel_id": "CVS-A05",
+        "name": "便利店候选 E｜同业饱和街区",
+        "scenario_profile": "competition_saturated",
+        "longitude": 121.33,
+        "latitude": 31.35,
+        "area_hectares": 0.07,
+        "geometry_dataset_id": "demo-convenience-candidates"
+      },
+      {
+        "parcel_id": "CVS-A06",
+        "name": "便利店候选 F｜车辆服务节点",
+        "scenario_profile": "vehicle_service_node",
+        "longitude": 121.36,
+        "latitude": 31.35,
+        "area_hectares": 0.09,
+        "geometry_dataset_id": "demo-convenience-candidates"
+      }
     ]
   }
 }
