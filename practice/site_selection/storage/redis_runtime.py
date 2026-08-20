@@ -43,9 +43,12 @@ class RedisRuntimeClient(Protocol):
 
 class RunEventType(StrEnum):
     CREATED = "created"
+    ENQUEUED = "enqueued"
     STARTED = "started"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
     HUMAN_REVIEW_ACKNOWLEDGED = "human_review_acknowledged"
 
 

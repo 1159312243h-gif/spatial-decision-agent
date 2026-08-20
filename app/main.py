@@ -16,6 +16,10 @@ from app.services.site_selection_run_service import (
     SiteSelectionRunService,
     UnconfiguredSiteSelectionRunService,
 )
+from app.services.site_selection_queue import (
+    QueuedSiteSelectionRunService,
+    SiteSelectionJobQueue,
+)
 from app.services.site_selection_artifacts import FileSystemSiteSelectionReportStore
 from app.services.site_selection_explanation import SiteSelectionEvidenceExplainer
 from app.site_selection_bootstrap import (
@@ -32,6 +36,7 @@ def create_app(
     mcp_server: object | None = None,
     resource_closer: Callable[[], None] | None = None,
     explainer: SiteSelectionEvidenceExplainer | None = None,
+    job_queue: SiteSelectionJobQueue | None = None,
 ) -> FastAPI:
     lifespan = None
     if resource_closer is not None:
@@ -55,16 +60,22 @@ def create_app(
     application.state.site_selection_analysis_service = (
         SiteSelectionAnalysisService(provider)
     )
-    application.state.site_selection_run_service = (
-        SiteSelectionRunService(
+    if run_store is not None:
+        run_executor = SiteSelectionRunService(
             provider,
             run_store,
             report_store=report_store,
             explainer=explainer,
         )
-        if run_store is not None
-        else UnconfiguredSiteSelectionRunService()
-    )
+        application.state.site_selection_run_service = (
+            QueuedSiteSelectionRunService(run_executor, job_queue)
+            if job_queue is not None
+            else run_executor
+        )
+    else:
+        application.state.site_selection_run_service = (
+            UnconfiguredSiteSelectionRunService()
+        )
     application.state.site_selection_mcp_server = mcp_server
 
     application.include_router(health_router)
@@ -85,6 +96,7 @@ def create_app_from_environment() -> FastAPI:
         mcp_server=bootstrap.mcp_server,
         resource_closer=bootstrap.close,
         explainer=bootstrap.explainer,
+        job_queue=bootstrap.job_queue,
     )
     application.state.site_selection_bootstrap = bootstrap
     return application

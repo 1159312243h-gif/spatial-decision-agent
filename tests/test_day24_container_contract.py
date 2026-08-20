@@ -17,8 +17,22 @@ def test_compose_explicitly_wires_api_mcp_workbench_and_storage() -> None:
     compose = yaml.safe_load((ROOT / "compose.yaml").read_text(encoding="utf-8"))
     services = compose["services"]
 
-    assert set(services) == {"api", "mcp", "workbench", "postgis", "redis"}
+    assert set(services) == {
+        "api",
+        "worker",
+        "mcp",
+        "workbench",
+        "postgis",
+        "redis",
+    }
     assert services["api"]["environment"]["SITE_SELECTION_RUNTIME_MODE"] == "fixture"
+    assert services["api"]["environment"]["SITE_SELECTION_RUN_MODE"] == "async"
+    assert services["worker"]["command"][-1] == (
+        "scripts/run_site_selection_worker.py"
+    )
+    assert services["worker"]["volumes"] == [
+        "report_artifacts:/app/artifacts/reports"
+    ]
     assert services["workbench"]["environment"]["SITE_SELECTION_API_URL"] == (
         "http://api:8000"
     )

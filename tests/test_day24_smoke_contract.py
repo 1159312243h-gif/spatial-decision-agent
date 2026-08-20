@@ -1,4 +1,8 @@
-from scripts.smoke_day24_fixture_runtime import EXPECTED_MCP_TOOLS, PAYLOADS
+from scripts.smoke_day24_fixture_runtime import (
+    EXPECTED_MCP_TOOLS,
+    PAYLOADS,
+    FixtureSmokeError,
+)
 
 
 def test_day24_smoke_covers_both_project_types_and_four_fixture_candidates() -> None:
@@ -12,3 +16,14 @@ def test_day24_smoke_covers_both_project_types_and_four_fixture_candidates() -> 
         "poi_metrics",
         "policy_search",
     }
+
+
+def test_day24_safe_error_can_preserve_terminal_run_diagnostics() -> None:
+    error = FixtureSmokeError(
+        "stage=worker; project_type=shopping_mall; run_id=run-001; "
+        "status=failed; run_error=选址任务入队失败：TypeError"
+    )
+
+    assert "run_id=run-001" in str(error)
+    assert "status=failed" in str(error)
+    assert "run_error=选址任务入队失败：TypeError" in str(error)

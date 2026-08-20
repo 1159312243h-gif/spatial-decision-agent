@@ -15,6 +15,7 @@
 - 使用 BM25、向量检索和 RRF 生成带政策出处、条款、页码及引用片段的检索结果。
 - 使用 LangGraph 并行执行 POI 与空间分支，再汇合到规则评估和证据审查。
 - 使用 Redis 保存运行状态、幂等键、POI 缓存和事件流，并为每类数据设置 TTL。
+- 使用 RQ 将长时间运行的分析交给独立 Worker，支持排队、取消、超时和失败回调。
 - 通过 FastAPI、MCP 和 Streamlit Workbench 提供 HTTP、工具调用和人工演示入口。
 - 输出 DOCX 报告、SHA-256 摘要、阶段耗时和人工确认审计事件。
 - 提供 24 条冻结评测，其中 4 条为 POI 故障场景。
@@ -39,16 +40,18 @@ flowchart LR
     UI["Streamlit Workbench"] --> API["FastAPI"]
     Client["API / MCP Client"] --> API
     MCPClient["MCP Client"] --> MCP["MCP Server"]
-    API --> Run["Run Service"]
-    Run --> Graph["LangGraph Workflow"]
+    API --> Run["Queued Run Service"]
+    Run --> Queue["RQ / Redis"]
+    Queue --> Worker["Worker"]
+    Worker --> Graph["LangGraph Workflow"]
     Graph --> GIS["Spatial Agent"]
     Graph --> POI["POI Branch"]
     GIS --> Rules["Policy Agent"]
     POI --> Merge["Evidence Merge"]
     Rules --> Merge
     Merge --> Review["Evidence Review"]
-    Review --> Redis[("Redis")]
-    Review --> Reports["DOCX Reports"]
+    Review --> Redis[("Redis State")]
+    Review --> Reports["Shared DOCX Reports"]
     GIS --> PostGIS[("PostGIS")]
     POI --> PostGIS
     POI --> Online["Amap / Overpass"]
@@ -109,7 +112,10 @@ docker compose up -d --build --wait
 docker compose ps
 python .\scripts\apply_postgis_migrations.py
 python .\scripts\smoke_day24_fixture_runtime.py
+python .\scripts\smoke_day27_async_runtime.py
 ```
+
+Compose 默认以异步模式运行。`POST /site-selection/runs` 返回 `202 Accepted` 和 `run_id` 只表示任务已入队；Workbench 通过刷新读取 `queued/running/completed` 状态，也可以取消尚未结束的任务。`POST /site-selection/analyses` 仍保留为显式同步分析接口。
 
 入口：
 
@@ -131,8 +137,9 @@ docker compose stop
 | `GET` | `/health` | 服务健康检查 |
 | `POST` | `/site-selection/preflight` | 对不完整输入执行前置检查 |
 | `POST` | `/site-selection/analyses` | 同步执行选址分析 |
-| `POST` | `/site-selection/runs` | 创建带 Redis 状态与幂等键的运行 |
+| `POST` | `/site-selection/runs` | 幂等创建运行；异步模式返回 `202 queued` |
 | `GET` | `/site-selection/runs/{run_id}` | 读取运行状态、分析、解释与阶段 Trace |
+| `POST` | `/site-selection/runs/{run_id}/cancel` | 取消 queued/running 任务 |
 | `POST` | `/site-selection/runs/{run_id}/human-review/acknowledge` | 记录人工已阅，不作合规批准 |
 | `GET` | `/site-selection/runs/{run_id}/events` | 读取审计事件 |
 | `GET` | `/site-selection/runs/{run_id}/report` | 下载 DOCX 报告 |

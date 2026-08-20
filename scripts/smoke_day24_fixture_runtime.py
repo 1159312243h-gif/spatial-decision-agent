@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -67,6 +68,27 @@ PAYLOADS = {
 }
 
 
+class FixtureSmokeError(RuntimeError):
+    """A deliberately safe error whose message may be printed by the smoke."""
+
+
+def wait_for_run(
+    client: httpx.Client,
+    run: dict,
+    *,
+    timeout_seconds: float = 240,
+) -> dict:
+    deadline = time.monotonic() + timeout_seconds
+    while run["status"] in {"queued", "running"}:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("site-selection run did not reach a terminal state")
+        time.sleep(0.25)
+        response = client.get(f"/site-selection/runs/{run['run_id']}")
+        response.raise_for_status()
+        run = response.json()
+    return run
+
+
 def smoke_api(api_url: str) -> list[str]:
     explanation_statuses = []
     with httpx.Client(base_url=api_url, timeout=90) as client:
@@ -79,33 +101,48 @@ def smoke_api(api_url: str) -> list[str]:
                 headers={"Idempotency-Key": f"day24-smoke-{uuid4()}"},
             )
             response.raise_for_status()
-            run = response.json()
+            run = wait_for_run(client, response.json())
             if run["status"] != "completed":
-                raise RuntimeError(f"{project_type} run did not complete")
+                raise FixtureSmokeError(
+                    f"stage=worker; project_type={project_type}; "
+                    f"run_id={run.get('run_id')}; status={run.get('status')}; "
+                    f"run_error={run.get('error') or 'none'}"
+                )
             analysis = run["analysis"]
             if len(analysis["results"]) != 2:
-                raise RuntimeError(f"{project_type} result count mismatch")
+                raise FixtureSmokeError(
+                    f"stage=analysis; project_type={project_type}; "
+                    "result count mismatch"
+                )
             comparison = analysis["comparison_report"]
             if not comparison or len(comparison["candidates"]) != 2:
-                raise RuntimeError(f"{project_type} comparison is incomplete")
+                raise FixtureSmokeError(
+                    f"stage=analysis; project_type={project_type}; "
+                    "comparison is incomplete"
+                )
             for result in analysis["results"]:
                 if not result["gis_evidence"]["metrics"]:
-                    raise RuntimeError("GIS evidence is missing")
+                    raise FixtureSmokeError("stage=analysis; GIS evidence is missing")
                 if not result["poi_evidence"]["feature_sets"]:
-                    raise RuntimeError("POI evidence is missing")
+                    raise FixtureSmokeError("stage=analysis; POI evidence is missing")
                 if not result["policy_evidence"]["evaluated_rule_ids"]:
-                    raise RuntimeError("rule IDs are missing")
+                    raise FixtureSmokeError("stage=analysis; rule IDs are missing")
                 sources = [
                     item["source"]
                     for item in result["poi_evidence"]["feature_sets"]
                 ]
                 if any(not source.get("queried_at") for source in sources):
-                    raise RuntimeError("POI queried_at is missing")
+                    raise FixtureSmokeError(
+                        "stage=analysis; POI queried_at is missing"
+                    )
             explanation_statuses.append(run["explanation"]["status"])
             report = client.get(run["report_url"])
             report.raise_for_status()
             if not report.content.startswith(b"PK"):
-                raise RuntimeError("report is not a DOCX artifact")
+                raise FixtureSmokeError(
+                    f"stage=report; project_type={project_type}; "
+                    "artifact is not DOCX"
+                )
     return explanation_statuses
 
 
@@ -114,7 +151,7 @@ async def smoke_mcp(mcp_url: str) -> None:
         listed = await client.list_tools()
     actual = {tool.name for tool in listed.tools}
     if actual != EXPECTED_MCP_TOOLS:
-        raise RuntimeError(
+        raise FixtureSmokeError(
             f"MCP tool mismatch: missing={sorted(EXPECTED_MCP_TOOLS - actual)}, "
             f"unexpected={sorted(actual - EXPECTED_MCP_TOOLS)}"
         )
@@ -126,8 +163,14 @@ def main() -> int:
     try:
         statuses = smoke_api(api_url)
         asyncio.run(smoke_mcp(mcp_url))
+    except FixtureSmokeError as exc:
+        print(f"Day24 fixture smoke FAILED: {exc}")
+        return 1
     except Exception as exc:
-        print(f"Day24 fixture smoke FAILED: error_type={type(exc).__name__}")
+        print(
+            "Day24 fixture smoke FAILED: "
+            f"stage=unexpected; error_type={type(exc).__name__}"
+        )
         return 1
     print(
         "Day24 fixture smoke OK: project_types=2, candidates=4, "

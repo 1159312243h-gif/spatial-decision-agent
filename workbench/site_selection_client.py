@@ -61,6 +61,13 @@ class SiteSelectionAPIClient:
         response = self._request("GET", f"/site-selection/runs/{run_id}")
         return SiteSelectionRunResponse.model_validate(response.json())
 
+    def cancel_run(self, run_id: str) -> SiteSelectionRunResponse:
+        response = self._request(
+            "POST",
+            f"/site-selection/runs/{run_id}/cancel",
+        )
+        return SiteSelectionRunResponse.model_validate(response.json())
+
     def acknowledge_human_review(
         self,
         run_id: str,

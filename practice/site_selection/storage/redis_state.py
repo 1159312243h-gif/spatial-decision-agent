@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -23,12 +24,16 @@ class RedisClient(Protocol):
 
     def ttl(self, name: str) -> int: ...
 
+    def eval(self, script: str, numkeys: int, *keys_and_args: Any) -> Any: ...
+
 
 class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
 
 
 class RunState(BaseModel):
@@ -44,10 +49,11 @@ class RunState(BaseModel):
     def state_is_consistent(self) -> RunState:
         if self.updated_at.tzinfo is None or self.updated_at.utcoffset() is None:
             raise ValueError("运行状态更新时间必须包含时区")
-        if self.status is RunStatus.FAILED and self.error is None:
-            raise ValueError("failed 状态必须包含错误信息")
-        if self.status is not RunStatus.FAILED and self.error is not None:
-            raise ValueError("非 failed 状态不能携带错误信息")
+        error_statuses = {RunStatus.FAILED, RunStatus.TIMED_OUT}
+        if self.status in error_statuses and self.error is None:
+            raise ValueError("failed 或 timed_out 状态必须包含错误信息")
+        if self.status not in error_statuses and self.error is not None:
+            raise ValueError("非失败状态不能携带错误信息")
         if _SAFE_RUN_ID.fullmatch(self.run_id) is None:
             raise ValueError("run_id 只能包含字母、数字、点、下划线和连字符")
         return self
@@ -116,6 +122,35 @@ class RedisRunStateStore:
         self.save(state)
         return state
 
+    def transition(
+        self,
+        run_id: str,
+        expected_statuses: set[RunStatus],
+        status: RunStatus,
+        *,
+        error: str | None = None,
+        details: dict[str, Any] | None = None,
+        updated_at: datetime | None = None,
+    ) -> RunState | None:
+        if not expected_statuses:
+            raise ValueError("状态转换必须声明至少一个预期状态")
+        state = RunState(
+            run_id=run_id,
+            status=status,
+            updated_at=updated_at or datetime.now(timezone.utc),
+            error=error,
+            details=details or {},
+        )
+        result = self._client.eval(
+            _TRANSITION_SCRIPT,
+            1,
+            self._key(run_id),
+            json.dumps(sorted(item.value for item in expected_statuses)),
+            state.model_dump_json(),
+            str(self._ttl_seconds),
+        )
+        return state if int(result) == 1 else None
+
     def delete(self, run_id: str) -> bool:
         return bool(self._client.delete(self._key(run_id)))
 
@@ -126,3 +161,20 @@ class RedisRunStateStore:
         if _SAFE_RUN_ID.fullmatch(run_id) is None:
             raise ValueError("run_id 只能包含字母、数字、点、下划线和连字符")
         return f"{self._namespace}:{run_id}"
+
+
+_TRANSITION_SCRIPT = """
+local current = redis.call('GET', KEYS[1])
+if not current then
+    return -1
+end
+local current_status = cjson.decode(current)['status']
+local expected_statuses = cjson.decode(ARGV[1])
+for _, expected_status in ipairs(expected_statuses) do
+    if current_status == expected_status then
+        redis.call('SET', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+        return 1
+    end
+end
+return 0
+"""

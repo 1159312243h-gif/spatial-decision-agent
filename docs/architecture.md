@@ -20,7 +20,9 @@
 sequenceDiagram
     participant U as "用户 / Workbench"
     participant A as "FastAPI"
-    participant S as "Run Service"
+    participant S as "Queued Run Service"
+    participant Q as "RQ / Redis Queue"
+    participant W as "Worker"
     participant R as "Redis"
     participant G as "LangGraph"
     participant P as "POI Branch"
@@ -31,8 +33,13 @@ sequenceDiagram
 
     U->>A: POST /site-selection/runs + Idempotency-Key
     A->>S: create_run(command)
-    S->>R: claim idempotency + queued/running state
-    S->>G: run ProjectRequest
+    S->>R: claim idempotency + queued state
+    S->>Q: enqueue sanitized command
+    S-->>A: queued RunState
+    A-->>U: 202 Accepted + run_id
+    Q->>W: execute_site_selection_job
+    W->>R: running state + started event
+    W->>G: run ProjectRequest
     par Evidence branches
         G->>P: build and execute POI queries
         P-->>G: FeatureSet + provenance + metrics
@@ -44,10 +51,11 @@ sequenceDiagram
     end
     G->>V: evaluate versioned rules
     V->>V: assemble results and audit evidence
-    V-->>S: AgentState
-    S->>O: bounded explanation and DOCX report
-    S->>R: completed/failed state + trace + event
-    S-->>A: RunState
+    V-->>W: AgentState
+    W->>O: bounded explanation and DOCX report
+    W->>R: completed/failed state + trace + event
+    U->>A: GET /runs/{run_id}
+    A->>R: read state
     A-->>U: structured response
 ```
 
@@ -64,7 +72,7 @@ stateDiagram-v2
     failed --> [*]
 ```
 
-应用层运行状态另外经历 `queued -> running -> completed|failed`。领域分析状态与 Redis 运行状态分开，避免把工作流内部状态误当成基础设施状态。
+应用层运行状态经历 `queued -> running -> completed|failed|timed_out`，`queued` 和 `running` 还可以转为 `cancelled`。取消先写 Redis 终态，再尽力撤销排队任务或停止运行中任务，避免失败回调把取消覆盖成失败。领域分析状态与 Redis 运行状态分开，避免把工作流内部状态误当成基础设施状态。
 
 ## 4. 关键组件
 
@@ -86,7 +94,7 @@ stateDiagram-v2
 
 ### 可靠性与人工复核
 
-Redis 保存运行状态、幂等记录、POI 缓存和事件，每类键都有命名空间与 TTL。规则命中、POI Fixture 降级等警告进入 `pending` 人工复核。`acknowledged` 只表示操作员已阅，事件中固定记录 `acknowledgement_not_compliance_approval` 边界。
+Redis 保存运行状态、幂等记录、POI 缓存和事件，每类键都有命名空间与 TTL。RQ 使用独立 Redis 连接和固定队列名；任务载荷只有 `run_id` 与经过 Schema 序列化的业务请求，不包含数据库、Redis 或 LLM 凭据。规则命中、POI Fixture 降级等警告进入 `pending` 人工复核。`acknowledged` 只表示操作员已阅，事件中固定记录 `acknowledgement_not_compliance_approval` 边界。
 
 ## 5. 失败策略
 
@@ -96,11 +104,14 @@ Redis 保存运行状态、幂等记录、POI 缓存和事件，每类键都有�
 - 在线 POI 暂时不可用：有配置时重试/熔断并显式降级；响应格式错误直接失败。
 - 证据血缘缺失：证据审查 `blocked`，不能进入人工确认。
 - 报告生成失败：运行失败，保留已完成分析和清洗后的阶段 Trace。
+- 入队失败：运行写为 `failed`，只记录异常类型，不泄露 Redis 连接信息。
+- Worker 超时：RQ 终止任务，失败回调写入 `timed_out` 和审计事件。
+- 用户取消：`queued/running` 转为 `cancelled`；完成、失败或超时任务拒绝取消。
 - LLM 解释失败：分析仍可完成，解释状态单独标记为 `failed`。
 - 未配置运行时：系统 fail-closed，不自动启用 Fixture。
 
 ## 6. 部署拓扑
 
-Compose 启动五个服务：API `8000`、MCP `8001`、Workbench `8501`、PostGIS `5432`、Redis `6379`。API 等待 PostGIS 与 Redis 健康；MCP 和 Workbench 等待 API 健康。报告通过命名卷持久化。
+Compose 启动六个服务：API `8000`、RQ Worker、MCP `8001`、Workbench `8501`、PostGIS `5432`、Redis `6379`。API 负责校验、幂等与入队，Worker 独立执行工作流。API 与 Worker 等待 PostGIS、Redis 健康，并共享报告命名卷；MCP 和 Workbench 等待 API 健康。
 
 当前拓扑用于本地演示。生产化仍需反向代理、TLS、密钥管理、网络隔离、备份恢复、数据库连接池容量评估、集中日志和监控告警。

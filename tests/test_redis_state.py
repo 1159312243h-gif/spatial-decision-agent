@@ -49,13 +49,30 @@ def test_failed_state_requires_error_and_round_trips() -> None:
 
 
 def test_non_failed_state_rejects_error() -> None:
-    with pytest.raises(ValidationError, match="非 failed"):
+    with pytest.raises(ValidationError, match="非失败"):
         RunState(
             run_id="run-003",
             status=RunStatus.COMPLETED,
             updated_at=NOW,
             error="stale error",
         )
+
+
+def test_timed_out_state_requires_error_but_cancelled_does_not() -> None:
+    with pytest.raises(ValidationError, match="timed_out"):
+        RunState(
+            run_id="run-timeout",
+            status=RunStatus.TIMED_OUT,
+            updated_at=NOW,
+        )
+
+    cancelled = RunState(
+        run_id="run-cancelled",
+        status=RunStatus.CANCELLED,
+        updated_at=NOW,
+    )
+
+    assert cancelled.error is None
 
 
 def test_invalid_namespace_and_run_id_are_rejected() -> None:
@@ -73,3 +90,25 @@ def test_delete_removes_state() -> None:
     assert store.delete("run-004") is True
     assert store.get("run-004") is None
     assert store.ttl("run-004") == -2
+
+
+def test_transition_only_updates_from_expected_status() -> None:
+    store = RedisRunStateStore(FakeRedis(), ttl_seconds=60)
+    store.update("run-cas", RunStatus.QUEUED, updated_at=NOW)
+
+    running = store.transition(
+        "run-cas",
+        {RunStatus.QUEUED},
+        RunStatus.RUNNING,
+        updated_at=NOW,
+    )
+    stale_cancel = store.transition(
+        "run-cas",
+        {RunStatus.QUEUED},
+        RunStatus.CANCELLED,
+        updated_at=NOW,
+    )
+
+    assert running is not None
+    assert stale_cancel is None
+    assert store.get("run-cas").status is RunStatus.RUNNING

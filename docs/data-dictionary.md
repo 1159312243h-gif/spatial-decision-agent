@@ -141,7 +141,9 @@ Schema 名为 `site_selection`，迁移版本为 `001_initial`。
 | `{ns}:poi_cache:{sha256(query+scope)}` | `POIFeatureSet` JSON | POI 查询缓存 |
 | `{ns}:events:{run_id}` | `RunEvent` JSON list | 审计事件流 |
 
-幂等与事件 TTL 不允许长于运行状态 TTL。Redis 密码只通过环境变量传入，不进入 Key、日志或响应。
+`RunState.status` 允许 `queued`、`running`、`completed`、`failed`、`cancelled`、`timed_out`。`failed` 和 `timed_out` 必须包含脱敏 `error`，其他状态禁止携带错误。异步运行的 `details.queue_job_id` 是确定性 RQ Job ID；凭据不进入 `details`。
+
+RQ 自己维护 `rq:*` 队列、Job 和 Registry Key，其格式由 RQ 版本管理，不作为本项目领域存储契约。幂等与事件 TTL 不允许长于运行状态 TTL。Redis 密码只通过环境变量传入，不进入 Key、日志或响应。关键状态转换使用 Lua 比较并更新。
 
 ## 6. 评测结果
 

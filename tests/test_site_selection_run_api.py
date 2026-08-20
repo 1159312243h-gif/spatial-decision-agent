@@ -3,7 +3,9 @@ from fastapi.testclient import TestClient
 from app.api.site_selection import get_site_selection_run_service
 from app.main import app
 from app.services.site_selection_artifacts import FileSystemSiteSelectionReportStore
+from app.services.site_selection_queue import QueuedSiteSelectionRunService
 from tests.test_site_selection_api import valid_payload
+from tests.test_site_selection_async_queue import FakeJobQueue
 from tests.test_site_selection_run_service import command, preview_command, service
 
 
@@ -135,6 +137,43 @@ def test_run_api_returns_not_found() -> None:
     response = client.get("/site-selection/runs/missing-run")
 
     assert response.status_code == 404
+
+
+def test_async_run_api_returns_202_and_supports_cancellation() -> None:
+    run_service = QueuedSiteSelectionRunService(
+        service(run_ids=["run-async-api-001"]),
+        FakeJobQueue(),
+    )
+    app.dependency_overrides[get_site_selection_run_service] = (
+        lambda: run_service
+    )
+
+    created = client.post("/site-selection/runs", json=run_payload())
+    cancelled = client.post(
+        "/site-selection/runs/run-async-api-001/cancel"
+    )
+
+    assert created.status_code == 202
+    assert created.json()["status"] == "queued"
+    assert created.json()["analysis"] is None
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+
+def test_cancel_api_rejects_completed_run_and_returns_not_found() -> None:
+    run_service = service(run_ids=["run-completed-api-001"])
+    app.dependency_overrides[get_site_selection_run_service] = (
+        lambda: run_service
+    )
+    client.post("/site-selection/runs", json=run_payload())
+
+    conflict = client.post(
+        "/site-selection/runs/run-completed-api-001/cancel"
+    )
+    missing = client.post("/site-selection/runs/missing-run/cancel")
+
+    assert conflict.status_code == 409
+    assert missing.status_code == 404
 
 
 def test_poi_preview_reports_cache_hit() -> None:

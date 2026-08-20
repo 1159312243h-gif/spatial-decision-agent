@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import deque
 from typing import Any
 
@@ -76,3 +77,18 @@ class FakeRedis:
             return False
         self.expirations[name] = seconds
         return True
+
+    def eval(self, script: str, numkeys: int, *keys_and_args: Any) -> int:
+        del script
+        if numkeys != 1 or len(keys_and_args) != 4:
+            raise ValueError("FakeRedis only supports run-state transitions")
+        key, expected_payload, new_payload, ttl = keys_and_args
+        current = self.values.get(key)
+        if current is None:
+            return -1
+        expected = json.loads(expected_payload)
+        if json.loads(current)["status"] not in expected:
+            return 0
+        self.values[key] = new_payload
+        self.expirations[key] = int(ttl)
+        return 1

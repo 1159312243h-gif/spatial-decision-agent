@@ -63,6 +63,10 @@ class SiteSelectionRunStateInconsistentError(RuntimeError):
     """Raised when an idempotency mapping points to expired run state."""
 
 
+class SiteSelectionRunConflictError(RuntimeError):
+    """Raised when an operation is invalid for the current run status."""
+
+
 class SiteSelectionRunServiceProtocol(Protocol):
     def create_run(
         self,
@@ -76,6 +80,8 @@ class SiteSelectionRunServiceProtocol(Protocol):
     def get_events(self, run_id: str) -> list[RunEvent]: ...
 
     def get_report_path(self, run_id: str) -> str: ...
+
+    def cancel_run(self, run_id: str) -> RunState: ...
 
     def acknowledge_human_review(
         self,
@@ -96,6 +102,12 @@ class POIPreviewResult:
     cached: bool
 
 
+@dataclass(frozen=True)
+class PreparedSiteSelectionRun:
+    state: RunState
+    created: bool
+
+
 RunWorkflow = Callable[
     [
         ProjectRequest,
@@ -107,7 +119,7 @@ RunWorkflow = Callable[
 
 
 class SiteSelectionRunService:
-    """Synchronous first-version run API backed by Redis runtime records."""
+    """Execute runs and persist their lifecycle in Redis."""
 
     def __init__(
         self,
@@ -142,8 +154,17 @@ class SiteSelectionRunService:
         *,
         idempotency_key: str | None = None,
     ) -> RunState:
-        run_started_at = self._monotonic()
-        traces: list[RunStageTrace] = []
+        prepared = self.prepare_run(command, idempotency_key=idempotency_key)
+        if not prepared.created:
+            return prepared.state
+        return self.execute_run(prepared.state.run_id, command)
+
+    def prepare_run(
+        self,
+        command: SiteSelectionAnalysisCreate,
+        *,
+        idempotency_key: str | None = None,
+    ) -> PreparedSiteSelectionRun:
         runtime = self._resolve_runtime(command.project_type)
         proposed_run_id = self._run_id_factory()
         if idempotency_key is not None:
@@ -158,7 +179,7 @@ class SiteSelectionRunService:
                     raise SiteSelectionRunStateInconsistentError(
                         "幂等键引用的运行状态已过期"
                     )
-                return existing
+                return PreparedSiteSelectionRun(state=existing, created=False)
 
         run_id = proposed_run_id
         request = _build_request(
@@ -169,20 +190,130 @@ class SiteSelectionRunService:
         base_details = {
             "request_id": request.request_id,
             "project_type": request.project_type.value,
+            "requested_at": request.requested_at.isoformat(),
         }
-        self._store.run_states.update(
+        state = self._store.run_states.update(
             run_id,
             RunStatus.QUEUED,
             details=base_details,
             updated_at=self._clock(),
         )
         self._append_event(run_id, RunEventType.CREATED, base_details)
-        self._store.run_states.update(
+        return PreparedSiteSelectionRun(state=state, created=True)
+
+    def mark_enqueued(self, run_id: str, *, job_id: str) -> RunState:
+        state = self.get_run(run_id)
+        if state.status is not RunStatus.QUEUED:
+            raise SiteSelectionRunConflictError(
+                f"只有 queued 运行可以登记队列任务：{state.status.value}"
+            )
+        details = {**state.details, "queue_job_id": job_id}
+        updated = self._store.run_states.transition(
             run_id,
+            {RunStatus.QUEUED},
+            RunStatus.QUEUED,
+            details=details,
+            updated_at=self._clock(),
+        )
+        if updated is None:
+            latest = self.get_run(run_id)
+            raise SiteSelectionRunConflictError(
+                f"运行登记队列任务时状态已变为：{latest.status.value}"
+            )
+        self._append_event(
+            run_id,
+            RunEventType.ENQUEUED,
+            {"queue_job_id": job_id},
+        )
+        return updated
+
+    def mark_enqueue_failed(self, run_id: str, exc: Exception) -> RunState:
+        state = self.get_run(run_id)
+        error = f"选址任务入队失败：{type(exc).__name__}"
+        details = {**state.details, "queue_error_type": type(exc).__name__}
+        failed = self._store.run_states.transition(
+            run_id,
+            {RunStatus.QUEUED},
+            RunStatus.FAILED,
+            error=error,
+            details=details,
+            updated_at=self._clock(),
+        )
+        if failed is None:
+            return self.get_run(run_id)
+        self._append_event(
+            run_id,
+            RunEventType.FAILED,
+            {"error": error},
+        )
+        return failed
+
+    def execute_run(
+        self,
+        run_id: str,
+        command: SiteSelectionAnalysisCreate,
+    ) -> RunState:
+        state = self.get_run(run_id)
+        if state.status in {
+            RunStatus.COMPLETED,
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+            RunStatus.TIMED_OUT,
+        }:
+            return state
+        if state.status is not RunStatus.QUEUED:
+            raise SiteSelectionRunConflictError(
+                f"运行不能从 {state.status.value} 再次启动"
+            )
+        if state.details.get("project_type") != command.project_type.value:
+            raise SiteSelectionRunStateInconsistentError(
+                "排队运行的项目类型与任务载荷不一致"
+            )
+
+        run_started_at = self._monotonic()
+        traces: list[RunStageTrace] = []
+        runtime = self._resolve_runtime(command.project_type)
+        request_id = state.details.get("request_id")
+        if not isinstance(request_id, str) or not request_id:
+            raise SiteSelectionRunStateInconsistentError(
+                "排队运行缺少 request_id"
+            )
+        requested_at_raw = state.details.get("requested_at")
+        if not isinstance(requested_at_raw, str):
+            raise SiteSelectionRunStateInconsistentError(
+                "排队运行缺少 requested_at"
+            )
+        try:
+            requested_at = datetime.fromisoformat(requested_at_raw)
+        except ValueError as exc:
+            raise SiteSelectionRunStateInconsistentError(
+                "排队运行的 requested_at 无效"
+            ) from exc
+        request = _build_request(
+            command,
+            request_id=request_id,
+            requested_at=requested_at,
+        )
+        base_details = dict(state.details)
+        running = self._store.run_states.transition(
+            run_id,
+            {RunStatus.QUEUED},
             RunStatus.RUNNING,
             details=base_details,
             updated_at=self._clock(),
         )
+        if running is None:
+            latest = self.get_run(run_id)
+            if latest.status in {
+                RunStatus.COMPLETED,
+                RunStatus.FAILED,
+                RunStatus.CANCELLED,
+                RunStatus.TIMED_OUT,
+            }:
+                return latest
+            raise SiteSelectionRunConflictError(
+                f"运行启动时状态已变为：{latest.status.value}"
+            )
         self._append_event(run_id, RunEventType.STARTED, base_details)
 
         try:
@@ -198,9 +329,13 @@ class SiteSelectionRunService:
                 traces,
             )
         except Exception as exc:
+            terminal = self._externally_terminated(run_id)
+            if terminal is not None:
+                return terminal
             error = f"选址运行发生未处理异常：{type(exc).__name__}"
-            failed = self._store.run_states.update(
+            failed = self._store.run_states.transition(
                 run_id,
+                {RunStatus.RUNNING},
                 RunStatus.FAILED,
                 error=error,
                 details={
@@ -214,6 +349,8 @@ class SiteSelectionRunService:
                 },
                 updated_at=self._clock(),
             )
+            if failed is None:
+                return self.get_run(run_id)
             self._append_event(
                 run_id,
                 RunEventType.FAILED,
@@ -225,6 +362,9 @@ class SiteSelectionRunService:
             **base_details,
             "analysis": analysis.model_dump(mode="json"),
         }
+        terminal = self._externally_terminated(run_id)
+        if terminal is not None:
+            return terminal
         if analysis.status is not AnalysisStatus.COMPLETED:
             workflow_trace = traces[-1]
             traces[-1] = workflow_trace.model_copy(
@@ -250,8 +390,9 @@ class SiteSelectionRunService:
                 )
             except Exception as exc:
                 error = f"Run finalization failed: {type(exc).__name__}"
-                failed = self._store.run_states.update(
+                failed = self._store.run_states.transition(
                     run_id,
+                    {RunStatus.RUNNING},
                     RunStatus.FAILED,
                     error=error,
                     details={
@@ -265,6 +406,8 @@ class SiteSelectionRunService:
                     },
                     updated_at=self._clock(),
                 )
+                if failed is None:
+                    return self.get_run(run_id)
                 self._append_event(
                     run_id,
                     RunEventType.FAILED,
@@ -303,8 +446,9 @@ class SiteSelectionRunService:
                         "选址报告生成失败："
                         f"{type(exc).__name__}"
                     )
-                    failed = self._store.run_states.update(
+                    failed = self._store.run_states.transition(
                         run_id,
+                        {RunStatus.RUNNING},
                         RunStatus.FAILED,
                         error=error,
                         details={
@@ -318,6 +462,8 @@ class SiteSelectionRunService:
                         },
                         updated_at=self._clock(),
                     )
+                    if failed is None:
+                        return self.get_run(run_id)
                     self._append_event(
                         run_id,
                         RunEventType.FAILED,
@@ -340,12 +486,18 @@ class SiteSelectionRunService:
                 self._monotonic(),
                 succeeded=True,
             )
-            completed = self._store.run_states.update(
+            terminal = self._externally_terminated(run_id)
+            if terminal is not None:
+                return terminal
+            completed = self._store.run_states.transition(
                 run_id,
+                {RunStatus.RUNNING},
                 RunStatus.COMPLETED,
                 details=details,
                 updated_at=self._clock(),
             )
+            if completed is None:
+                return self.get_run(run_id)
             self._append_event(run_id, RunEventType.COMPLETED, base_details)
             return completed
 
@@ -353,8 +505,9 @@ class SiteSelectionRunService:
             error = "；".join(analysis.errors) or "选址分析失败"
         else:
             error = f"选址工作流返回非终态：{analysis.status.value}"
-        failed = self._store.run_states.update(
+        failed = self._store.run_states.transition(
             run_id,
+            {RunStatus.RUNNING},
             RunStatus.FAILED,
             error=error,
             details={
@@ -368,6 +521,8 @@ class SiteSelectionRunService:
             },
             updated_at=self._clock(),
         )
+        if failed is None:
+            return self.get_run(run_id)
         self._append_event(
             run_id,
             RunEventType.FAILED,
@@ -375,11 +530,77 @@ class SiteSelectionRunService:
         )
         return failed
 
+    def mark_cancelled(self, run_id: str) -> RunState:
+        state = self.get_run(run_id)
+        if state.status is RunStatus.CANCELLED:
+            return state
+        if state.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+            raise SiteSelectionRunConflictError(
+                f"只有 queued 或 running 运行可以取消：{state.status.value}"
+            )
+        details = {
+            **state.details,
+            "cancelled_at": self._clock().isoformat(),
+        }
+        cancelled = self._store.run_states.transition(
+            run_id,
+            {RunStatus.QUEUED, RunStatus.RUNNING},
+            RunStatus.CANCELLED,
+            details=details,
+            updated_at=self._clock(),
+        )
+        if cancelled is None:
+            latest = self.get_run(run_id)
+            if latest.status is RunStatus.CANCELLED:
+                return latest
+            raise SiteSelectionRunConflictError(
+                f"运行取消时状态已变为：{latest.status.value}"
+            )
+        self._append_event(
+            run_id,
+            RunEventType.CANCELLED,
+            {"queue_job_id": details.get("queue_job_id")},
+        )
+        return cancelled
+
+    def mark_timed_out(
+        self,
+        run_id: str,
+        *,
+        error_type: str = "JobTimeoutException",
+    ) -> RunState:
+        state = self.get_run(run_id)
+        if state.status in {RunStatus.CANCELLED, RunStatus.TIMED_OUT}:
+            return state
+        if state.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+            return state
+        error = f"选址任务执行超时：{error_type}"
+        details = {**state.details, "worker_error_type": error_type}
+        timed_out = self._store.run_states.transition(
+            run_id,
+            {RunStatus.QUEUED, RunStatus.RUNNING},
+            RunStatus.TIMED_OUT,
+            error=error,
+            details=details,
+            updated_at=self._clock(),
+        )
+        if timed_out is None:
+            return self.get_run(run_id)
+        self._append_event(
+            run_id,
+            RunEventType.TIMED_OUT,
+            {"error": error},
+        )
+        return timed_out
+
     def get_run(self, run_id: str) -> RunState:
         state = self._store.run_states.get(run_id)
         if state is None:
             raise SiteSelectionRunNotFoundError(f"选址运行不存在：{run_id}")
         return state
+
+    def cancel_run(self, run_id: str) -> RunState:
+        return self.mark_cancelled(run_id)
 
     def acknowledge_human_review(
         self,
@@ -491,6 +712,12 @@ class SiteSelectionRunService:
             )
         )
 
+    def _externally_terminated(self, run_id: str) -> RunState | None:
+        state = self.get_run(run_id)
+        if state.status in {RunStatus.CANCELLED, RunStatus.TIMED_OUT}:
+            return state
+        return None
+
     def _timed_stage(
         self,
         stage: str,
@@ -540,6 +767,9 @@ class UnconfiguredSiteSelectionRunService:
         return self._unavailable()
 
     def get_report_path(self, run_id):
+        return self._unavailable()
+
+    def cancel_run(self, run_id):
         return self._unavailable()
 
     def acknowledge_human_review(self, run_id, *, note=None):

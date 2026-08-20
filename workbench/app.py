@@ -120,7 +120,7 @@ payload = {
 if st.button("运行分析", type="primary", icon=":material/play_arrow:"):
     try:
         client = SiteSelectionAPIClient(api_url)
-        with st.spinner("正在运行选址分析和证据解释..."):
+        with st.spinner("正在提交选址任务..."):
             st.session_state.site_selection_run = client.create_run(
                 payload,
                 idempotency_key=f"workbench-{uuid4()}",
@@ -136,6 +136,54 @@ if run is not None and run_payload is not None:
     status_col.metric("运行状态", run.status.value)
     updated_col.metric("更新时间", run.updated_at.strftime("%H:%M:%S"))
     report_col.metric("运行编号", run.run_id)
+
+    if run.status.value in {"queued", "running"}:
+        refresh_col, cancel_col = st.columns(2)
+        if refresh_col.button(
+            "刷新状态",
+            icon=":material/refresh:",
+            use_container_width=True,
+        ):
+            try:
+                st.session_state.site_selection_run = (
+                    SiteSelectionAPIClient(api_url).get_run(run.run_id)
+                )
+                st.rerun()
+            except SiteSelectionAPIError as exc:
+                st.error(str(exc))
+        if cancel_col.button(
+            "取消任务",
+            icon=":material/cancel:",
+            use_container_width=True,
+        ):
+            try:
+                st.session_state.site_selection_run = (
+                    SiteSelectionAPIClient(api_url).cancel_run(run.run_id)
+                )
+                st.rerun()
+            except SiteSelectionAPIError as exc:
+                st.error(str(exc))
+        if run.status.value == "queued":
+            st.info("任务已进入队列，等待 Worker 执行。")
+        else:
+            st.info("Worker 正在执行空间分析、证据解释和报告生成。")
+        st.stop()
+
+    if run.status.value in {"failed", "timed_out", "cancelled"}:
+        message = run.error or {
+            "cancelled": "任务已取消。",
+            "timed_out": "任务执行超时。",
+            "failed": "任务执行失败。",
+        }[run.status.value]
+        if run.status.value == "cancelled":
+            st.warning(message)
+        else:
+            st.error(message)
+        st.stop()
+
+    if run.analysis is None:
+        st.error("运行已结束，但未返回分析结果。")
+        st.stop()
 
     if run.human_review is not None:
         if run.human_review.status.value == "pending":

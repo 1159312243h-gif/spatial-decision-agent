@@ -93,6 +93,36 @@ def test_api_client_creates_run_and_downloads_report() -> None:
     assert report == b"PK-fixture"
 
 
+def test_api_client_refreshes_and_cancels_queued_run() -> None:
+    queued = SiteSelectionRunResponse(
+        run_id="run-queued-001",
+        status=RunStatus.QUEUED,
+        updated_at=datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
+    cancelled = queued.model_copy(update={"status": RunStatus.CANCELLED})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/site-selection/runs/run-queued-001" + (
+            "/cancel" if request.method == "POST" else ""
+        )
+        return httpx.Response(
+            200,
+            json=(
+                cancelled.model_dump(mode="json")
+                if request.method == "POST"
+                else queued.model_dump(mode="json")
+            ),
+        )
+
+    client = SiteSelectionAPIClient(
+        "http://api.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert client.get_run(queued.run_id).status is RunStatus.QUEUED
+    assert client.cancel_run(queued.run_id).status is RunStatus.CANCELLED
+
+
 def test_api_client_default_timeout_covers_fixture_llm_budget() -> None:
     client = SiteSelectionAPIClient("http://api.test")
 

@@ -1094,3 +1094,20 @@
 - 明确 Fixture POI 不具备真实选址参考性，人工确认不是合规批准，GCJ-02 不等于 EPSG:4326。
 - 定向测试 `5 passed in 2.39s`，冻结评测 `24/24` 通过，全量回归 `430 passed in 8.39s`。
 - 本机 Fixture 性能中位数：GIS `0.135ms`、POI `0.031ms`、RAG `0.033ms`、完整评测批次 `88.798ms`；这些数字不是生产 Benchmark。
+### 2026-08-19：RQ 异步 Worker、取消与超时恢复
+
+- 将选址运行拆分为 API prepare/enqueue 与 Worker execute 两个阶段，Compose 默认使用异步模式。
+- 新增 RQ 队列适配器与独立 Worker 入口；任务载荷不包含数据库、Redis 或 LLM 凭据。
+- Redis 运行状态新增 `cancelled`、`timed_out`，事件新增 `enqueued`、`cancelled`、`timed_out`。
+- 新增取消 API；queued 使用 RQ cancel，running 使用 stop command，重复取消幂等。
+- 取消先落 Redis 终态，防止 Worker 失败回调覆盖用户取消；迟到 Worker 不再发布结果。
+- 关键状态转换使用 Redis Lua 原子比较更新，避免 Worker 启动、完成与取消之间的覆盖竞态。
+- RQ job timeout 与失败回调写入脱敏终态，不覆盖已有终态。
+- Workbench 支持 queued/running 展示、显式刷新和取消，未完成时不访问空 analysis。
+- API 与 Worker 共享报告卷；同步模式保留给测试和显式本地调用。
+- 新增异步队列、Worker、API、Workbench、Redis 状态与 Compose 契约测试。
+- 原 Day 24 Smoke 兼容异步轮询；新增 Day 27 Smoke 验证 HTTP 202、完整队列事件链和共享报告。
+- RQ 2.11 真实入队发现并修复 `enqueue_call(job_timeout=...)` 参数错误，改为正式参数 `timeout=...`，并补充回归测试与安全 Smoke 诊断。
+- 针对性测试 16 项通过；独立测试区完整 pytest 451 项通过。
+- Docker Compose API、Worker、PostGIS、Redis 均健康；Day 27 真实异步 Smoke 通过，事件链 4 个事件齐全并成功读取 DOCX 报告。
+- Day 24 回归 Smoke 通过：2 类项目、4 个候选、2 份报告、6 个 MCP 工具，解释状态均为 `generated`。

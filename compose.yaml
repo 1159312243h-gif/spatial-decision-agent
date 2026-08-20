@@ -13,8 +13,17 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       SITE_SELECTION_RUNTIME_MODE: fixture
+      SITE_SELECTION_RUN_MODE: async
       SITE_SELECTION_REPORT_DIR: /app/artifacts/reports
       SITE_SELECTION_REDIS_NAMESPACE: site_selection:fixture
+      SITE_SELECTION_QUEUE_NAME: ${SITE_SELECTION_QUEUE_NAME:-site-selection}
+      SITE_SELECTION_JOB_TIMEOUT_SECONDS: ${SITE_SELECTION_JOB_TIMEOUT_SECONDS:-180}
+      SITE_SELECTION_JOB_RESULT_TTL_SECONDS: ${SITE_SELECTION_JOB_RESULT_TTL_SECONDS:-3600}
+      SITE_SELECTION_JOB_FAILURE_TTL_SECONDS: ${SITE_SELECTION_JOB_FAILURE_TTL_SECONDS:-86400}
+      SITE_SELECTION_RUN_TTL_SECONDS: ${SITE_SELECTION_RUN_TTL_SECONDS:-86400}
+      SITE_SELECTION_IDEMPOTENCY_TTL_SECONDS: ${SITE_SELECTION_IDEMPOTENCY_TTL_SECONDS:-86400}
+      SITE_SELECTION_POI_CACHE_TTL_SECONDS: ${SITE_SELECTION_POI_CACHE_TTL_SECONDS:-3600}
+      SITE_SELECTION_EVENT_TTL_SECONDS: ${SITE_SELECTION_EVENT_TTL_SECONDS:-86400}
       LLM_API_KEY: ${LLM_API_KEY:?Set LLM_API_KEY in .env}
       LLM_BASE_URL: ${LLM_BASE_URL:?Set LLM_BASE_URL in .env}
       LLM_MODEL: ${LLM_MODEL:?Set LLM_MODEL in .env}
@@ -39,6 +48,36 @@ services:
       timeout: 3s
       retries: 5
       start_period: 20s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - python
+      - scripts/run_site_selection_worker.py
+    environment:
+      SITE_SELECTION_RUNTIME_MODE: fixture
+      SITE_SELECTION_RUN_MODE: sync
+      SITE_SELECTION_REPORT_DIR: /app/artifacts/reports
+      SITE_SELECTION_REDIS_NAMESPACE: site_selection:fixture
+      SITE_SELECTION_QUEUE_NAME: ${SITE_SELECTION_QUEUE_NAME:-site-selection}
+      SITE_SELECTION_RUN_TTL_SECONDS: ${SITE_SELECTION_RUN_TTL_SECONDS:-86400}
+      SITE_SELECTION_IDEMPOTENCY_TTL_SECONDS: ${SITE_SELECTION_IDEMPOTENCY_TTL_SECONDS:-86400}
+      SITE_SELECTION_POI_CACHE_TTL_SECONDS: ${SITE_SELECTION_POI_CACHE_TTL_SECONDS:-3600}
+      SITE_SELECTION_EVENT_TTL_SECONDS: ${SITE_SELECTION_EVENT_TTL_SECONDS:-86400}
+      LLM_API_KEY: ${LLM_API_KEY:?Set LLM_API_KEY in .env}
+      LLM_BASE_URL: ${LLM_BASE_URL:?Set LLM_BASE_URL in .env}
+      LLM_MODEL: ${LLM_MODEL:?Set LLM_MODEL in .env}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgis:5432/${POSTGRES_DB:-site_selection}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379/0
+    volumes:
+      - report_artifacts:/app/artifacts/reports
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   mcp:
     build:

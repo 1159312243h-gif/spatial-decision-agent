@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +18,11 @@ from app.services.site_selection_artifacts import FileSystemSiteSelectionReportS
 from app.services.site_selection_explanation import (
     OpenAISiteSelectionEvidenceExplainer,
     SiteSelectionEvidenceExplainer,
+)
+from app.services.site_selection_queue import (
+    RQQueueSettings,
+    RQSiteSelectionJobQueue,
+    SiteSelectionJobQueue,
 )
 from app.services.site_selection_service import (
     SiteSelectionRuntime,
@@ -172,21 +177,33 @@ class _EnginePOIReader:
             return PostgresPOIRepository(connection).search_nearby(**kwargs)
 
 
-@dataclass(frozen=True)
+@dataclass
 class SiteSelectionBootstrap:
     runtime_provider: SiteSelectionRuntimeRegistry
     run_store: RedisSiteSelectionRuntimeStore
     report_store: FileSystemSiteSelectionReportStore
-    mcp_server: Any
+    mcp_server: Any | None
     engine: Engine
     redis_client: Any
     explainer: SiteSelectionEvidenceExplainer | None = None
+    job_queue: SiteSelectionJobQueue | None = None
+    run_mode: str = "sync"
+    _closed: bool = field(default=False, init=False, repr=False)
 
     def close(self) -> None:
-        close = getattr(self.redis_client, "close", None)
-        if callable(close):
-            close()
-        self.engine.dispose()
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            if self.job_queue is not None:
+                self.job_queue.close()
+        finally:
+            try:
+                close = getattr(self.redis_client, "close", None)
+                if callable(close):
+                    close()
+            finally:
+                self.engine.dispose()
 
 
 def load_fixture_spatial_seed(
@@ -324,8 +341,12 @@ def build_site_selection_bootstrap_from_environment(
     *,
     engine_factory: Callable[..., Engine] = create_engine,
     redis_factory: Callable[..., Any] | None = None,
+    job_queue_factory: Callable[
+        [str, RQQueueSettings], SiteSelectionJobQueue
+    ] = RQSiteSelectionJobQueue.from_url,
     migration_applier: Callable[[Engine], None] = apply_migration,
     fixture_root: str | Path = FIXTURE_ROOT,
+    include_mcp: bool = True,
 ) -> SiteSelectionBootstrap | None:
     values = os.environ if environ is None else environ
     mode = values.get("SITE_SELECTION_RUNTIME_MODE", "").strip().lower()
@@ -336,9 +357,39 @@ def build_site_selection_bootstrap_from_environment(
             f"不支持的 SITE_SELECTION_RUNTIME_MODE：{mode}"
         )
 
+    run_mode = values.get("SITE_SELECTION_RUN_MODE", "sync").strip().lower()
+    if run_mode not in {"sync", "async"}:
+        raise SiteSelectionBootstrapError(
+            "SITE_SELECTION_RUN_MODE 只能是 sync 或 async"
+        )
+
     database_url = _required_environment(values, "DATABASE_URL")
     redis_url = _required_environment(values, "REDIS_URL")
     report_dir = _required_environment(values, "SITE_SELECTION_REPORT_DIR")
+    runtime_namespace = values.get(
+        "SITE_SELECTION_REDIS_NAMESPACE",
+        "site_selection:fixture",
+    )
+    run_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_RUN_TTL_SECONDS",
+        86_400,
+    )
+    idempotency_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_IDEMPOTENCY_TTL_SECONDS",
+        86_400,
+    )
+    poi_cache_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_POI_CACHE_TTL_SECONDS",
+        3_600,
+    )
+    event_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_EVENT_TTL_SECONDS",
+        86_400,
+    )
     if redis_factory is None:
         from redis import Redis
 
@@ -350,6 +401,7 @@ def build_site_selection_bootstrap_from_environment(
         connect_args={"connect_timeout": 5},
     )
     redis_client = None
+    job_queue = None
     try:
         migration_applier(engine)
         root = Path(fixture_root)
@@ -364,11 +416,38 @@ def build_site_selection_bootstrap_from_environment(
         redis_client.ping()
         run_store = RedisSiteSelectionRuntimeStore(
             redis_client,
-            namespace=values.get(
-                "SITE_SELECTION_REDIS_NAMESPACE",
-                "site_selection:fixture",
-            ),
+            namespace=runtime_namespace,
+            run_ttl_seconds=run_ttl_seconds,
+            idempotency_ttl_seconds=idempotency_ttl_seconds,
+            poi_cache_ttl_seconds=poi_cache_ttl_seconds,
+            event_ttl_seconds=event_ttl_seconds,
         )
+        if run_mode == "async":
+            queue_settings = RQQueueSettings(
+                queue_name=values.get(
+                    "SITE_SELECTION_QUEUE_NAME",
+                    "site-selection",
+                ),
+                job_timeout_seconds=_positive_int_environment(
+                    values,
+                    "SITE_SELECTION_JOB_TIMEOUT_SECONDS",
+                    180,
+                ),
+                result_ttl_seconds=_positive_int_environment(
+                    values,
+                    "SITE_SELECTION_JOB_RESULT_TTL_SECONDS",
+                    3_600,
+                ),
+                failure_ttl_seconds=_positive_int_environment(
+                    values,
+                    "SITE_SELECTION_JOB_FAILURE_TTL_SECONDS",
+                    86_400,
+                ),
+                runtime_namespace=runtime_namespace,
+                run_ttl_seconds=run_ttl_seconds,
+                event_ttl_seconds=event_ttl_seconds,
+            )
+            job_queue = job_queue_factory(redis_url, queue_settings)
         return SiteSelectionBootstrap(
             runtime_provider=build_fixture_runtime_registry(
                 engine,
@@ -376,17 +455,24 @@ def build_site_selection_bootstrap_from_environment(
             ),
             run_store=run_store,
             report_store=FileSystemSiteSelectionReportStore(report_dir),
-            mcp_server=build_fixture_mcp_server(engine, fixture_root=root),
+            mcp_server=(
+                build_fixture_mcp_server(engine, fixture_root=root)
+                if include_mcp
+                else None
+            ),
             engine=engine,
             redis_client=redis_client,
             explainer=_build_optional_explainer(values),
+            job_queue=job_queue,
+            run_mode=run_mode,
         )
     except Exception as exc:
-        if redis_client is not None:
-            close = getattr(redis_client, "close", None)
-            if callable(close):
-                close()
-        engine.dispose()
+        _close_quietly(job_queue)
+        _close_quietly(redis_client)
+        try:
+            engine.dispose()
+        except Exception:
+            pass
         raise SiteSelectionBootstrapError(
             "fixture 选址运行时初始化失败："
             f"error_type={type(exc).__name__}"
@@ -519,6 +605,37 @@ def _required_environment(values: Mapping[str, str], name: str) -> str:
     if not value:
         raise SiteSelectionBootstrapError(f"缺少环境变量：{name}")
     return value
+
+
+def _positive_int_environment(
+    values: Mapping[str, str],
+    name: str,
+    default: int,
+) -> int:
+    raw_value = values.get(name, str(default)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise SiteSelectionBootstrapError(
+            f"环境变量 {name} 必须是正整数"
+        ) from exc
+    if value <= 0:
+        raise SiteSelectionBootstrapError(
+            f"环境变量 {name} 必须是正整数"
+        )
+    return value
+
+
+def _close_quietly(resource: Any | None) -> None:
+    if resource is None:
+        return
+    close = getattr(resource, "close", None)
+    if not callable(close):
+        return
+    try:
+        close()
+    except Exception:
+        pass
 
 
 def _build_optional_explainer(

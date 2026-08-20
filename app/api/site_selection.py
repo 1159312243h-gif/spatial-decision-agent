@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Path,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import FileResponse
 
 from app.schemas.site_selection import (
@@ -23,6 +32,7 @@ from app.services.site_selection_service import (
     SiteSelectionRuntimeUnavailableError,
 )
 from app.services.site_selection_run_service import (
+    SiteSelectionRunConflictError,
     SiteSelectionRunNotFoundError,
     SiteSelectionRunServiceProtocol,
     SiteSelectionRunServiceUnavailableError,
@@ -34,7 +44,10 @@ from practice.site_selection import (
     OrchestratorAgent,
     OrchestratorAgentInput,
 )
-from practice.site_selection.storage import IdempotencyConflictError
+from practice.site_selection.storage import (
+    IdempotencyConflictError,
+    RunStatus,
+)
 
 
 router = APIRouter(prefix="/site-selection", tags=["site-selection"])
@@ -169,6 +182,7 @@ def create_site_selection_analysis(
 )
 def create_site_selection_run(
     command: SiteSelectionAnalysisCreate,
+    response: Response,
     service: Annotated[
         SiteSelectionRunServiceProtocol,
         Depends(get_site_selection_run_service),
@@ -221,6 +235,33 @@ def create_site_selection_run(
                 message="创建选址运行时发生未处理异常",
                 errors=[type(exc).__name__],
             ),
+        )
+    if state.status in {RunStatus.QUEUED, RunStatus.RUNNING}:
+        response.status_code = status.HTTP_202_ACCEPTED
+    return SiteSelectionRunResponse.from_state(state)
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    response_model=SiteSelectionRunResponse,
+)
+def cancel_site_selection_run(
+    run_id: RunIdPath,
+    service: Annotated[
+        SiteSelectionRunServiceProtocol,
+        Depends(get_site_selection_run_service),
+    ],
+) -> SiteSelectionRunResponse:
+    try:
+        state = service.cancel_run(run_id)
+    except SiteSelectionRunNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except SiteSelectionRunConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except SiteSelectionRunServiceUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
         )
     return SiteSelectionRunResponse.from_state(state)
 

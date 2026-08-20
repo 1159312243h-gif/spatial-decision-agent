@@ -21,7 +21,8 @@ from practice.site_selection import (
 )
 from practice.site_selection.poi_adapters import FixturePOIDataset
 from practice.site_selection.spatial import MockSpatialDatasetGateway
-from tests.storage_fakes import FakeConnection
+from tests.storage_fakes import FakeConnection, FakeRedis
+from tests.test_site_selection_async_queue import FakeJobQueue
 
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "data" / "fixtures"
@@ -49,6 +50,14 @@ def test_explicit_runtime_mode_and_required_connections_are_validated() -> None:
     with pytest.raises(SiteSelectionBootstrapError, match="DATABASE_URL"):
         build_site_selection_bootstrap_from_environment(
             {"SITE_SELECTION_RUNTIME_MODE": "fixture"}
+        )
+
+    with pytest.raises(SiteSelectionBootstrapError, match="sync 或 async"):
+        build_site_selection_bootstrap_from_environment(
+            {
+                "SITE_SELECTION_RUNTIME_MODE": "fixture",
+                "SITE_SELECTION_RUN_MODE": "inline",
+            }
         )
 
 
@@ -175,3 +184,76 @@ def test_seed_uses_parameterized_repositories_for_all_layers_and_pois() -> None:
     assert "INSERT INTO site_selection.pois" in sql
     assert "MALL-A01" not in sql
     assert "F001" not in sql
+
+
+def test_async_bootstrap_builds_separate_queue_and_skips_mcp(tmp_path) -> None:
+    class FakeEngine:
+        def __init__(self) -> None:
+            self.connection = FakeConnection()
+            self.dispose_calls = 0
+
+        def begin(self):
+            connection = self.connection
+
+            class Transaction:
+                def __enter__(self):
+                    return connection
+
+                def __exit__(self, exc_type, exc_value, traceback):
+                    return False
+
+            return Transaction()
+
+        def dispose(self) -> None:
+            self.dispose_calls += 1
+
+    class PingableRedis(FakeRedis):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_calls = 0
+
+        def ping(self) -> bool:
+            return True
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    engine = FakeEngine()
+    redis_client = PingableRedis()
+    queue = FakeJobQueue()
+    captured = {}
+
+    def queue_factory(redis_url, settings):
+        captured["redis_url"] = redis_url
+        captured["settings"] = settings
+        return queue
+
+    bootstrap = build_site_selection_bootstrap_from_environment(
+        {
+            "SITE_SELECTION_RUNTIME_MODE": "fixture",
+            "SITE_SELECTION_RUN_MODE": "async",
+            "DATABASE_URL": "postgresql+psycopg://fixture",
+            "REDIS_URL": "redis://fixture/0",
+            "SITE_SELECTION_REPORT_DIR": str(tmp_path / "reports"),
+            "SITE_SELECTION_QUEUE_NAME": "test-queue",
+        },
+        engine_factory=lambda *args, **kwargs: engine,
+        redis_factory=lambda *args, **kwargs: redis_client,
+        job_queue_factory=queue_factory,
+        migration_applier=lambda configured_engine: None,
+        fixture_root=FIXTURE_ROOT,
+        include_mcp=False,
+    )
+
+    assert bootstrap.run_mode == "async"
+    assert bootstrap.mcp_server is None
+    assert bootstrap.job_queue is queue
+    assert captured["redis_url"] == "redis://fixture/0"
+    assert captured["settings"].queue_name == "test-queue"
+
+    bootstrap.close()
+    bootstrap.close()
+
+    assert queue.closed is True
+    assert redis_client.close_calls == 1
+    assert engine.dispose_calls == 1
