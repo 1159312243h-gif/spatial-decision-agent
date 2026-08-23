@@ -27,10 +27,24 @@ class ProjectType(StrEnum):
     CONVENIENCE_STORE = "convenience_store"
 
 
+class AnalysisScope(StrEnum):
+    """Controls whether a run may issue land-compliance findings."""
+
+    MARKET_SELECTION = "market_selection"
+    FULL_COMPLIANCE = "full_compliance"
+
+
 class DatasetSource(StrEnum):
     API = "api"
     POSTGIS = "postgis"
     FILE = "file"
+
+
+class DatasetEvidenceLevel(StrEnum):
+    UNSPECIFIED = "unspecified"
+    AUTHORITATIVE = "authoritative"
+    PUBLIC_OBSERVATION = "public_observation"
+    SYNTHETIC = "synthetic"
 
 
 class CandidateParcel(BaseModel):
@@ -53,6 +67,7 @@ class ProjectRequest(BaseModel):
 
     request_id: NonEmptyString
     project_type: ProjectType
+    analysis_scope: AnalysisScope = AnalysisScope.FULL_COMPLIANCE
     candidate_parcels: Annotated[
         list[CandidateParcel],
         Field(min_length=1),
@@ -71,6 +86,12 @@ class ProjectRequest(BaseModel):
         parcel_ids = [parcel.parcel_id for parcel in self.candidate_parcels]
         if len(parcel_ids) != len(set(parcel_ids)):
             raise ValueError("候选地块编号不能重复")
+        if (
+            self.analysis_scope is AnalysisScope.MARKET_SELECTION
+            and self.project_type
+            not in {ProjectType.COFFEE_SHOP, ProjectType.CONVENIENCE_STORE}
+        ):
+            raise ValueError("市场选址分析当前只支持咖啡店和便利店")
         return self
 
 
@@ -87,6 +108,9 @@ class DatasetManifest(BaseModel):
     )
     version: NonEmptyString
     crs: NonEmptyString | None = None
+    evidence_level: DatasetEvidenceLevel = DatasetEvidenceLevel.UNSPECIFIED
+    source_uri: NonEmptyString | None = None
+    license: NonEmptyString | None = None
     required_fields: Annotated[
         list[NonEmptyString],
         Field(min_length=1),

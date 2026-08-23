@@ -10,6 +10,7 @@ from practice.site_selection import (
     AgentStepStatus,
     AgentStepTrace,
     build_site_selection_execution_plan,
+    build_site_selection_supervisor_execution_plan,
     order_agent_traces,
 )
 
@@ -61,6 +62,29 @@ def test_default_plan_is_closed_acyclic_and_dependency_correct() -> None:
     assert all(step.llm_allowed is False for step in plan.steps)
 
 
+def test_supervisor_plan_has_explicit_human_confirmation_dependency() -> None:
+    plan = build_site_selection_supervisor_execution_plan()
+    steps = {step.node_id: step for step in plan.steps}
+
+    assert [step.node_id for step in plan.steps] == [
+        "supervisor_intake",
+        "candidate_discovery",
+        "candidate_confirmation",
+        "analysis_submitted",
+        "analysis_wait",
+        "analysis_completed",
+    ]
+    assert steps["candidate_confirmation"].depends_on == [
+        "candidate_discovery"
+    ]
+    assert steps["analysis_submitted"].depends_on == [
+        "candidate_confirmation"
+    ]
+    assert steps["analysis_wait"].depends_on == ["analysis_submitted"]
+    assert steps["analysis_completed"].depends_on == ["analysis_wait"]
+    assert all(step.llm_allowed is False for step in plan.steps)
+
+
 @pytest.mark.parametrize(
     ("steps", "message"),
     [
@@ -80,6 +104,18 @@ def test_plan_rejects_unknown_or_cyclic_dependencies(
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         AgentExecutionPlan(plan_id="invalid-plan", version="v1", steps=steps)
+
+
+def test_plan_requires_topologically_ordered_steps_for_trace_order() -> None:
+    with pytest.raises(ValidationError, match="拓扑顺序"):
+        AgentExecutionPlan(
+            plan_id="misordered-plan",
+            version="v1",
+            steps=[
+                manifest("dependent", depends_on=["root"]),
+                manifest("root"),
+            ],
+        )
 
 
 def test_traces_are_ordered_by_plan_not_completion_order() -> None:

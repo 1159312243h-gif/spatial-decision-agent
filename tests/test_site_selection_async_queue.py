@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 import pytest
 
@@ -18,23 +19,32 @@ from practice.site_selection.storage import (
     RunStatus,
 )
 from tests.storage_fakes import FakeRedis
-from tests.test_site_selection_run_service import command, service
+from tests.test_site_selection_run_service import NOW, command, service
 
 
 @dataclass
 class FakeJobQueue:
     fail_enqueue: bool = False
-    enqueued: list[tuple[str, object]] = field(default_factory=list)
+    enqueued: list[tuple[str, object, str | None]] = field(default_factory=list)
     cancelled: list[tuple[str, bool]] = field(default_factory=list)
     closed: bool = False
+    job_timeout_seconds: int | None = None
 
     def job_id_for(self, run_id: str) -> str:
         return f"site-selection-{run_id}"
 
-    def enqueue(self, run_id: str, queued_command) -> None:
+    def enqueue(
+        self,
+        run_id: str,
+        queued_command,
+        *,
+        supervisor_session_id: str | None = None,
+    ) -> None:
         if self.fail_enqueue:
             raise RuntimeError("secret queue diagnostics")
-        self.enqueued.append((run_id, queued_command))
+        self.enqueued.append(
+            (run_id, queued_command, supervisor_session_id)
+        )
 
     def cancel(self, job_id: str, *, running: bool) -> None:
         self.cancelled.append((job_id, running))
@@ -51,7 +61,14 @@ class CapturingRQQueue:
         self.calls.append(kwargs)
 
 
-def queued_service(*, queue=None, run_ids=None, store=None, runner=None):
+def queued_service(
+    *,
+    queue=None,
+    run_ids=None,
+    store=None,
+    runner=None,
+    clock=None,
+):
     executor = service(
         store=store,
         run_ids=run_ids,
@@ -60,6 +77,7 @@ def queued_service(*, queue=None, run_ids=None, store=None, runner=None):
     return executor, QueuedSiteSelectionRunService(
         executor,
         queue or FakeJobQueue(),
+        **({"clock": clock} if clock is not None else {}),
     )
 
 
@@ -93,6 +111,19 @@ def test_async_idempotency_enqueues_exactly_once() -> None:
 
     assert first == second
     assert len(queue.enqueued) == 1
+
+
+def test_async_queue_preserves_supervisor_correlation() -> None:
+    queue = FakeJobQueue()
+    _, queued = queued_service(queue=queue)
+
+    state = queued.create_run(
+        command(),
+        supervisor_session_id="supervisor-queue-001",
+    )
+
+    assert state.details["supervisor_session_id"] == "supervisor-queue-001"
+    assert queue.enqueued[0][2] == "supervisor-queue-001"
 
 
 def test_enqueue_failure_is_sanitized_and_persisted() -> None:
@@ -164,9 +195,60 @@ def test_rq_adapter_uses_enqueue_call_timeout_parameter() -> None:
     adapter._settings = RQQueueSettings(job_timeout_seconds=123)
     adapter._queue = backend
 
-    adapter.enqueue("run-001", command())
+    adapter.enqueue(
+        "run-001",
+        command(),
+        supervisor_session_id="supervisor-rq-001",
+    )
 
     assert len(backend.calls) == 1
     call = backend.calls[0]
     assert call["timeout"] == 123
     assert "job_timeout" not in call
+    assert call["kwargs"]["supervisor_session_id"] == "supervisor-rq-001"
+    assert call["meta"]["supervisor_session_id"] == "supervisor-rq-001"
+    assert adapter.job_timeout_seconds == 123
+
+
+def test_get_run_reconciles_stale_running_worker_to_timed_out() -> None:
+    store = RedisSiteSelectionRuntimeStore(FakeRedis())
+    queue = FakeJobQueue(job_timeout_seconds=180)
+    executor, queued = queued_service(
+        queue=queue,
+        store=store,
+        clock=lambda: NOW + timedelta(seconds=211),
+    )
+    created = queued.create_run(command())
+    store.run_states.update(
+        created.run_id,
+        RunStatus.RUNNING,
+        details=created.details,
+        updated_at=NOW,
+    )
+
+    state = queued.get_run(created.run_id)
+
+    assert state.status is RunStatus.TIMED_OUT
+    assert state.details["worker_error_type"] == "StaleWorkerTimeout"
+    assert executor.get_events(created.run_id)[-1].event_type is (
+        RunEventType.TIMED_OUT
+    )
+
+
+def test_get_run_keeps_running_state_inside_timeout_grace() -> None:
+    store = RedisSiteSelectionRuntimeStore(FakeRedis())
+    queue = FakeJobQueue(job_timeout_seconds=180)
+    _, queued = queued_service(
+        queue=queue,
+        store=store,
+        clock=lambda: NOW + timedelta(seconds=210),
+    )
+    created = queued.create_run(command())
+    running = store.run_states.update(
+        created.run_id,
+        RunStatus.RUNNING,
+        details=created.details,
+        updated_at=NOW,
+    )
+
+    assert queued.get_run(created.run_id) == running

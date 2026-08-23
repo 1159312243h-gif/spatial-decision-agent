@@ -35,6 +35,7 @@ class ProjectProfile(BaseModel):
 
     project_type: ProjectType
     display_name: NonEmptyString
+    poi_query_limit: int = Field(default=100, ge=1, le=1_000)
     poi_groups: Annotated[list[POICategoryConfig], Field(min_length=5)]
 
     @model_validator(mode="after")
@@ -164,6 +165,7 @@ LOGISTICS_PARK_PROFILE = ProjectProfile(
 COFFEE_SHOP_PROFILE = ProjectProfile(
     project_type=ProjectType.COFFEE_SHOP,
     display_name="咖啡店",
+    poi_query_limit=1_000,
     poi_groups=[
         POICategoryConfig(
             group_key="transit_access",
@@ -220,6 +222,7 @@ COFFEE_SHOP_PROFILE = ProjectProfile(
 CONVENIENCE_STORE_PROFILE = ProjectProfile(
     project_type=ProjectType.CONVENIENCE_STORE,
     display_name="便利店",
+    poi_query_limit=1_000,
     poi_groups=[
         POICategoryConfig(
             group_key="residential_demand_proxy",
@@ -283,3 +286,18 @@ PROJECT_PROFILES: dict[ProjectType, ProjectProfile] = {
 
 def get_project_profile(project_type: ProjectType) -> ProjectProfile:
     return PROJECT_PROFILES[project_type].model_copy(deep=True)
+
+
+def get_supported_poi_categories() -> tuple[str, ...]:
+    """Return the reviewed category catalog supported by all profiles."""
+
+    return tuple(
+        sorted(
+            {
+                category
+                for profile in PROJECT_PROFILES.values()
+                for group in profile.poi_groups
+                for category in group.categories
+            }
+        )
+    )

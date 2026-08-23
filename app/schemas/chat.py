@@ -1,6 +1,14 @@
-from typing import Annotated, Literal
+from __future__ import annotations
 
-from pydantic import BaseModel, Field, StringConstraints
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+from practice.site_selection import (
+    ProjectType,
+    ScenarioConversationReply,
+    ScenarioConversationSession,
+)
 
 
 NonEmptyString = Annotated[
@@ -8,26 +16,46 @@ NonEmptyString = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1),
 ]
 
-ProjectType = Literal[
-    "shopping_mall",
-    "logistics_park",
-    "coffee_shop",
-    "convenience_store",
-]
-
 
 class CandidateParcel(BaseModel):
+    """Legacy chat context retained for API compatibility."""
+
+    model_config = ConfigDict(extra="forbid")
+
     parcel_id: NonEmptyString
     name: NonEmptyString
 
 
 class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     question: NonEmptyString
-    project_type: ProjectType
-    candidate_parcels: list[CandidateParcel] = Field(min_length=1)
+    session_id: NonEmptyString | None = None
+    project_type: ProjectType | None = None
+    candidate_parcels: list[CandidateParcel] = Field(default_factory=list)
 
 
-class ChatResponse(BaseModel):
-    answer: str
-    status: Literal["stub"]
-    received_candidates: int
+class ChatConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version_id: NonEmptyString
+    confirmed_by: NonEmptyString
+
+
+class ChatResponse(ScenarioConversationReply):
+    received_candidates: int = Field(default=0, ge=0)
+
+    @classmethod
+    def from_reply(
+        cls,
+        reply: ScenarioConversationReply,
+        *,
+        received_candidates: int = 0,
+    ) -> ChatResponse:
+        return cls(
+            **reply.model_dump(),
+            received_candidates=received_candidates,
+        )
+
+
+ChatSessionResponse = ScenarioConversationSession

@@ -81,9 +81,40 @@ def test_chat_success() -> None:
     assert response.status_code == 200
 
     body = response.json()
-    assert body["status"] == "stub"
+    assert body["status"] == "awaiting_confirmation"
     assert body["received_candidates"] == 2
-    assert "尚未执行真实选址分析" in body["answer"]
+    assert body["scenario_version"]["project_type"] == "logistics_park"
+    assert "请确认该版本" in body["answer"]
+
+
+def test_chat_confirms_region_scenario_and_returns_discovery_request() -> None:
+    proposed = client.post(
+        "/chat",
+        json={
+            "question": "在上海市徐汇区开咖啡店，范围 4 公里，找 8 个候选点",
+        },
+    )
+    assert proposed.status_code == 200
+    pending = proposed.json()
+
+    confirmed = client.post(
+        f"/chat/{pending['session_id']}/confirm",
+        json={
+            "version_id": pending["scenario_version"]["version_id"],
+            "confirmed_by": "api-test-user",
+        },
+    )
+
+    assert confirmed.status_code == 200
+    body = confirmed.json()
+    assert body["status"] == "confirmed"
+    assert body["discovery_request"]["project_type"] == "coffee_shop"
+    assert body["scenario_version"]["confirmed_by"] == "api-test-user"
+    recovered = client.get(f"/chat/{pending['session_id']}")
+    assert recovered.status_code == 200
+    assert recovered.json()["active_version_id"] == (
+        pending["scenario_version"]["version_id"]
+    )
 
 
 def test_chat_rejects_blank_question() -> None:

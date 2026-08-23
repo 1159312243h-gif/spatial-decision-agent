@@ -4,6 +4,7 @@ from app.api.site_selection import get_site_selection_run_service
 from app.main import app
 from app.services.site_selection_artifacts import FileSystemSiteSelectionReportStore
 from app.services.site_selection_queue import QueuedSiteSelectionRunService
+from practice.site_selection import CandidateDiscoverySnapshotNotFoundError
 from tests.test_site_selection_api import valid_payload
 from tests.test_site_selection_async_queue import FakeJobQueue
 from tests.test_site_selection_run_service import command, preview_command, service
@@ -127,6 +128,27 @@ def test_run_api_rejects_idempotency_key_reuse_for_different_request() -> None:
     assert first.status_code == 201
     assert second.status_code == 409
     assert second.json()["detail"]["code"] == "idempotency_conflict"
+
+
+def test_run_api_returns_conflict_for_expired_discovery_snapshot() -> None:
+    class ExpiredSnapshotService:
+        def create_run(self, command, *, idempotency_key=None):
+            del command, idempotency_key
+            raise CandidateDiscoverySnapshotNotFoundError(
+                "候选发现证据快照不存在或已过期：expired-snapshot"
+            )
+
+    app.dependency_overrides[get_site_selection_run_service] = (
+        lambda: ExpiredSnapshotService()
+    )
+    payload = run_payload()
+    payload["poi_evidence_snapshot_id"] = "expired-snapshot"
+
+    response = client.post("/site-selection/runs", json=payload)
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "analysis_blocked"
+    assert "不存在或已过期" in response.json()["detail"]["message"]
 
 
 def test_run_api_returns_not_found() -> None:

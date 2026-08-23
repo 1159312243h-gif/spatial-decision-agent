@@ -175,6 +175,7 @@ def _explanation_payload(state: AgentState) -> tuple[dict[str, Any], set[str]]:
     )
     return {
         "project_type": state.request.project_type.value,
+        "analysis_scope": state.request.analysis_scope.value,
         "candidates": candidates,
         "comparison": comparison,
         "constraints": {

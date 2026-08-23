@@ -23,12 +23,17 @@ from app.services.site_selection_service import (
     SiteSelectionRuntimeRegistry,
 )
 from practice.site_selection import (
+    CandidateParcel,
     EvidenceReviewIssue,
     EvidenceReviewReport,
     EvidenceReviewStatus,
+    ProjectRequest,
     ProjectType,
     ReviewIssueSeverity,
     SiteSelectionWorkflowDependencies,
+    build_candidate_discovery_poi_snapshot,
+    build_poi_queries,
+    get_project_profile,
     run_parallel_site_selection_workflow,
 )
 from practice.site_selection.storage import (
@@ -37,7 +42,7 @@ from practice.site_selection.storage import (
     RunStatus,
 )
 from tests.storage_fakes import FakeRedis
-from tests.test_site_selection_workflow import dependencies, manifests
+from tests.test_site_selection_workflow import dependencies, manifests, poi_gateway
 
 
 NOW = datetime(2026, 8, 21, 14, 0, tzinfo=timezone.utc)
@@ -136,6 +141,165 @@ def test_create_run_persists_completed_state_and_ordered_events() -> None:
         "report",
         "total",
     ]
+
+
+def test_run_reuses_snapshot_for_all_poi_groups_without_live_queries() -> None:
+    class RaisingGateway:
+        def search(self, query):
+            raise AssertionError(f"unexpected live POI query: {query.group_key}")
+
+    store = RedisSiteSelectionRuntimeStore(FakeRedis())
+    analysis_command = command().model_copy(
+        update={"poi_evidence_snapshot_id": "poi-snapshot-run-001"}
+    )
+    parcels = [
+        CandidateParcel.model_validate(item.model_dump())
+        for item in analysis_command.candidate_parcels
+    ]
+    discovery_request = ProjectRequest(
+        request_id="discover-run-001",
+        project_type=ProjectType.SHOPPING_MALL,
+        candidate_parcels=parcels,
+        requested_at=NOW,
+    )
+    queries = build_poi_queries(
+        discovery_request,
+        get_project_profile(ProjectType.SHOPPING_MALL),
+    )
+    fixture_gateway = poi_gateway()
+    frozen = build_candidate_discovery_poi_snapshot(
+        discovery_request_id=discovery_request.request_id,
+        project_type=discovery_request.project_type,
+        created_at=NOW,
+        candidates=parcels,
+        feature_sets=[fixture_gateway.search(query) for query in queries],
+        snapshot_id="poi-snapshot-run-001",
+    )
+    store.save_candidate_discovery_snapshot(frozen)
+    configured_runtime = runtime(
+        configured_dependencies=dependencies(
+            active_poi_gateway=RaisingGateway()
+        )
+    )
+    run_service = service(
+        store=store,
+        configured_runtime=configured_runtime,
+    )
+
+    state = run_service.create_run(analysis_command)
+
+    assert state.status is RunStatus.COMPLETED
+    assert state.details["poi_evidence_snapshot_id"] == frozen.snapshot_id
+    assert state.details["poi_evidence_snapshot_reused"] is True
+    sources = [
+        feature_set["source"]
+        for result in state.details["analysis"]["results"]
+        for feature_set in result["poi_evidence"]["feature_sets"]
+    ]
+    assert len(sources) == len(queries)
+    assert all(source["evidence_reused"] for source in sources)
+    assert {source["evidence_snapshot_id"] for source in sources} == {
+        frozen.snapshot_id
+    }
+
+
+def test_run_supplements_truncated_snapshot_with_candidate_local_queries() -> None:
+    class RecordingGateway:
+        def __init__(self) -> None:
+            self.queries = []
+            self.delegate = poi_gateway()
+
+        def search(self, query):
+            self.queries.append(query)
+            return self.delegate.search(query)
+
+    store = RedisSiteSelectionRuntimeStore(FakeRedis())
+    analysis_command = command().model_copy(
+        update={"poi_evidence_snapshot_id": "poi-snapshot-run-truncated"}
+    )
+    parcels = [
+        CandidateParcel.model_validate(item.model_dump())
+        for item in analysis_command.candidate_parcels
+    ]
+    discovery_request = ProjectRequest(
+        request_id="discover-run-truncated",
+        project_type=ProjectType.SHOPPING_MALL,
+        candidate_parcels=parcels,
+        requested_at=NOW,
+    )
+    profile = get_project_profile(ProjectType.SHOPPING_MALL)
+    queries = build_poi_queries(discovery_request, profile)
+    fixture_gateway = poi_gateway()
+    truncated_feature_sets = []
+    for query in queries:
+        feature_set = fixture_gateway.search(query)
+        source = feature_set.source.model_copy(
+            update={
+                "available_record_count": feature_set.source.record_count + 1,
+                "is_truncated": True,
+            }
+        )
+        truncated_feature_sets.append(
+            feature_set.model_copy(update={"source": source})
+        )
+    frozen = build_candidate_discovery_poi_snapshot(
+        discovery_request_id=discovery_request.request_id,
+        project_type=discovery_request.project_type,
+        created_at=NOW,
+        candidates=parcels,
+        feature_sets=truncated_feature_sets,
+        snapshot_id="poi-snapshot-run-truncated",
+    )
+    store.save_candidate_discovery_snapshot(frozen)
+    live_gateway = RecordingGateway()
+    configured_runtime = runtime(
+        configured_dependencies=dependencies(active_poi_gateway=live_gateway)
+    )
+
+    state = service(
+        store=store,
+        configured_runtime=configured_runtime,
+    ).create_run(analysis_command)
+
+    assert state.status is RunStatus.COMPLETED
+    assert len(live_gateway.queries) == len(queries)
+    assert {
+        (
+            query.parcel_id,
+            query.longitude,
+            query.latitude,
+            query.group_key,
+            query.radius_m,
+            tuple(query.categories),
+            query.limit,
+        )
+        for query in live_gateway.queries
+    } == {
+        (
+            query.parcel_id,
+            query.longitude,
+            query.latitude,
+            query.group_key,
+            query.radius_m,
+            tuple(query.categories),
+            query.limit,
+        )
+        for query in queries
+    }
+    sources = [
+        feature_set["source"]
+        for result in state.details["analysis"]["results"]
+        for feature_set in result["poi_evidence"]["feature_sets"]
+    ]
+    assert state.details["poi_evidence_snapshot_reused"] is False
+    assert all(source["evidence_supplemented"] for source in sources)
+    assert all(not source["evidence_reused"] for source in sources)
+    assert {source["evidence_supplement_reason"] for source in sources} == {
+        "snapshot_truncated"
+    }
+    assert {source["evidence_snapshot_id"] for source in sources} == {
+        frozen.snapshot_id
+    }
 
 
 def test_human_review_acknowledgement_is_audited_without_approving_result() -> None:

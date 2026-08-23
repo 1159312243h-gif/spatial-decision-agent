@@ -48,6 +48,32 @@ def test_candidate_catalog_has_six_distinct_scenarios_per_project() -> None:
         )
 
 
+def test_candidate_catalog_derives_explicit_retail_demo_discovery_bounds() -> None:
+    catalog = load_fixture_candidate_catalog(FIXTURE_ROOT / "candidates.json")
+
+    assert catalog.demo_discovery_bounds_for(ProjectType.COFFEE_SHOP) == {
+        "west": pytest.approx(121.295),
+        "south": pytest.approx(31.145),
+        "east": pytest.approx(121.365),
+        "north": pytest.approx(31.185),
+    }
+    assert catalog.demo_discovery_bounds_for(
+        ProjectType.CONVENIENCE_STORE
+    ) == {
+        "west": pytest.approx(121.295),
+        "south": pytest.approx(31.315),
+        "east": pytest.approx(121.365),
+        "north": pytest.approx(31.355),
+    }
+    with pytest.raises(ValueError, match="仅支持零售项目"):
+        catalog.demo_discovery_bounds_for(ProjectType.SHOPPING_MALL)
+    with pytest.raises(ValueError, match="边距必须大于 0"):
+        catalog.demo_discovery_bounds_for(
+            ProjectType.COFFEE_SHOP,
+            padding_degrees=0,
+        )
+
+
 def test_rich_poi_fixture_has_broad_category_and_scenario_coverage() -> None:
     payload = build_poi_dataset()
     records = payload["records"]
@@ -92,6 +118,18 @@ def test_spatial_seed_matches_catalog_and_preserves_declared_areas() -> None:
     assert len(layers["demo-logistics-constraints"].features) == 2
     assert len(layers["demo-coffee-constraints"].features) == 1
     assert len(layers["demo-convenience-constraints"].features) == 1
+    for layer_id in (
+        "demo-coffee-discovery-pool",
+        "demo-convenience-discovery-pool",
+    ):
+        features = layers[layer_id].features
+        assert len(features) == 25
+        assert {
+            item.properties["suitability"] for item in features
+        } == {"allowed", "review_required", "excluded"}
+        assert all(
+            item.properties["land_use_class"] for item in features
+        )
 
 
 def test_catalog_rejects_too_few_candidates() -> None:

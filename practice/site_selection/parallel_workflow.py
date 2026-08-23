@@ -5,8 +5,7 @@ from collections.abc import Iterable
 from time import perf_counter
 from typing import TypedDict
 
-from langgraph.graph import END, START, StateGraph
-
+from .agent_graph_runtime import compile_agent_plan_graph
 from .agent_orchestration import (
     AgentExecutionPlan,
     AgentStepStatus,
@@ -23,6 +22,11 @@ from .agents import (
     SpatialAgent,
     SpatialAgentBlockedError,
     SpatialAgentInput,
+)
+from .analysis_scope import (
+    is_market_selection,
+    mark_market_policy_unverified,
+    mark_market_spatial_unverified,
 )
 from .comparison import CandidateComparisonBlockedError
 from .domain import DatasetManifest, ProjectRequest
@@ -45,6 +49,8 @@ from .site_scoring_service import SiteScoringError, score_site_state
 class ParallelWorkflowState(TypedDict, total=False):
     """Internal graph state with one writer for every parallel branch field."""
 
+    request: ProjectRequest
+    datasets: list[DatasetManifest]
     initial_state: AgentState
     poi_state: AgentState
     spatial_state: AgentState
@@ -61,8 +67,10 @@ class ParallelWorkflowState(TypedDict, total=False):
 
 def build_parallel_site_selection_graph(
     dependencies: SiteSelectionWorkflowDependencies,
+    *,
+    intake_skill: ProjectIntakeSkill | None = None,
 ):
-    """Compile POI and spatial-policy branches with an explicit fan-in."""
+    """Compile the reviewed plan into the production LangGraph runtime."""
 
     spatial_agent = SpatialAgent(
         dependencies.spatial_gateway,
@@ -72,13 +80,34 @@ def build_parallel_site_selection_graph(
     policy_agent = PolicyAgent(dependencies.rules)
     review_agent = ReviewAgent()
     plan = build_site_selection_execution_plan()
+    intake_manifest = plan.step("intake")
     poi_manifest = plan.step("poi_evidence")
     spatial_manifest = plan.step("spatial_evidence")
     policy_manifest = plan.step("policy_rules")
     merge_manifest = plan.step("merge_gate")
     review_manifest = plan.step("review")
 
-    async def poi_branch(initial: AgentState) -> dict[str, AgentState | str]:
+    def intake_node(state: ParallelWorkflowState) -> dict[str, AgentState]:
+        started_at = perf_counter()
+        initial = (intake_skill or ProjectIntakeSkill()).run(state["request"])
+        data = initial.model_dump()
+        data["datasets"] = [
+            dataset.model_dump() for dataset in state["datasets"]
+        ]
+        data["execution_plan"] = plan
+        data["agent_trace"] = [
+            trace_for(
+                intake_manifest,
+                AgentStepStatus.SUCCEEDED,
+                _elapsed_ms(started_at),
+            )
+        ]
+        return {"initial_state": AgentState.model_validate(data)}
+
+    async def poi_branch(
+        state: ParallelWorkflowState,
+    ) -> dict[str, AgentState | str | AgentStepTrace]:
+        initial = state["initial_state"]
         started_at = perf_counter()
         try:
             result = await asyncio.to_thread(
@@ -111,8 +140,20 @@ def build_parallel_site_selection_graph(
         }
 
     async def spatial_branch(
-        initial: AgentState,
-    ) -> dict[str, AgentState | str]:
+        state: ParallelWorkflowState,
+    ) -> dict[str, AgentState | str | AgentStepTrace]:
+        if is_market_selection(state["initial_state"]):
+            return {
+                "spatial_state": mark_market_spatial_unverified(
+                    state["initial_state"]
+                ),
+                "spatial_trace": trace_for(
+                    spatial_manifest,
+                    AgentStepStatus.SKIPPED,
+                    0,
+                ),
+            }
+        initial = state["initial_state"]
         started_at = perf_counter()
         try:
             output = await asyncio.to_thread(
@@ -138,18 +179,9 @@ def build_parallel_site_selection_graph(
             ),
         }
 
-    async def parallel_sources(
-        state: ParallelWorkflowState,
-    ) -> dict[str, AgentState | str]:
-        poi_update, spatial_update = await asyncio.gather(
-            poi_branch(state["initial_state"]),
-            spatial_branch(state["initial_state"]),
-        )
-        return {**poi_update, **spatial_update}
-
     async def policy_branch(
         state: ParallelWorkflowState,
-    ) -> dict[str, AgentState | str]:
+    ) -> dict[str, AgentState | str | AgentStepTrace]:
         if "spatial_error" in state:
             return {
                 "policy_trace": trace_for(
@@ -167,6 +199,15 @@ def build_parallel_site_selection_graph(
                     AgentStepStatus.FAILED,
                     0,
                     error_type="MissingSpatialState",
+                ),
+            }
+        if is_market_selection(spatial_state):
+            return {
+                "policy_state": mark_market_policy_unverified(spatial_state),
+                "policy_trace": trace_for(
+                    policy_manifest,
+                    AgentStepStatus.SKIPPED,
+                    0,
                 ),
             }
         started_at = perf_counter()
@@ -269,7 +310,10 @@ def build_parallel_site_selection_graph(
             ],
         )
         merged = AgentState.model_validate(data)
-        if dependencies.site_scoring_config is not None:
+        if (
+            dependencies.site_scoring_config is not None
+            and not is_market_selection(merged)
+        ):
             try:
                 merged = score_site_state(
                     merged,
@@ -350,17 +394,18 @@ def build_parallel_site_selection_graph(
             )
         }
 
-    builder = StateGraph(ParallelWorkflowState)
-    builder.add_node("parallel_sources", parallel_sources)
-    builder.add_node("policy", policy_branch)
-    builder.add_node("merge", merge_branches)
-    builder.add_node("review", review_branch)
-    builder.add_edge(START, "parallel_sources")
-    builder.add_edge("parallel_sources", "policy")
-    builder.add_edge("policy", "merge")
-    builder.add_edge("merge", "review")
-    builder.add_edge("review", END)
-    return builder.compile()
+    return compile_agent_plan_graph(
+        plan=plan,
+        state_schema=ParallelWorkflowState,
+        node_handlers={
+            "intake": intake_node,
+            "poi_evidence": poi_branch,
+            "spatial_evidence": spatial_branch,
+            "policy_rules": policy_branch,
+            "merge_gate": merge_branches,
+            "review": review_branch,
+        },
+    )
 
 
 def run_parallel_site_selection_workflow(
@@ -391,22 +436,14 @@ async def run_parallel_site_selection_workflow_async(
 ) -> AgentState:
     """Async entrypoint for servers that already own an event loop."""
 
-    plan = build_site_selection_execution_plan()
-    intake_started_at = perf_counter()
-    initial = (intake_skill or ProjectIntakeSkill()).run(request)
-    data = initial.model_dump()
-    data["datasets"] = [dataset.model_dump() for dataset in datasets]
-    data["execution_plan"] = plan
-    data["agent_trace"] = [
-        trace_for(
-            plan.step("intake"),
-            AgentStepStatus.SUCCEEDED,
-            _elapsed_ms(intake_started_at),
-        )
-    ]
-    initial = AgentState.model_validate(data)
-    output = await build_parallel_site_selection_graph(dependencies).ainvoke(
-        {"initial_state": initial},
+    output = await build_parallel_site_selection_graph(
+        dependencies,
+        intake_skill=intake_skill,
+    ).ainvoke(
+        {
+            "request": request,
+            "datasets": [dataset.model_copy(deep=True) for dataset in datasets],
+        },
         config={"max_concurrency": 2},
     )
     return AgentState.model_validate(output["final_state"])

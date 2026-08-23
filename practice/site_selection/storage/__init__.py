@@ -14,6 +14,12 @@ from .redis_runtime import (
     RunEvent,
     RunEventType,
 )
+from .redis_supervisor import (
+    RedisSupervisorSessionCoordinator,
+    SupervisorSessionEvent,
+    SupervisorSessionEventType,
+    SupervisorSessionLeaseExpiredError,
+)
 
 __all__ = [
     "NearbyPOI",
@@ -24,10 +30,14 @@ __all__ = [
     "IdempotencyConflictError",
     "RedisRunStateStore",
     "RedisSiteSelectionRuntimeStore",
+    "RedisSupervisorSessionCoordinator",
     "RunEvent",
     "RunEventType",
     "RunState",
     "RunStatus",
+    "SupervisorSessionEvent",
+    "SupervisorSessionEventType",
+    "SupervisorSessionLeaseExpiredError",
     "SpatialLayerWrite",
     "StoredPOI",
     "StoredSpatialFeature",

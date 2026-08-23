@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from .analysis_scope import MARKET_SCOPE_NOTICE, is_market_selection
 from .evidence import (
     AgentState,
     AnalysisResult,
@@ -30,6 +31,7 @@ def assemble_analysis_results(state: AgentState) -> AgentState:
         "site score",
     )
 
+    market_selection = is_market_selection(state)
     results = [
         _assemble_parcel_result(
             state,
@@ -39,6 +41,7 @@ def assemble_analysis_results(state: AgentState) -> AgentState:
             policy_by_parcel.get(parcel.parcel_id),
             site_score_by_parcel.get(parcel.parcel_id),
             require_site_score=bool(state.site_score_reports),
+            market_selection=market_selection,
         )
         for parcel in state.request.candidate_parcels
     ]
@@ -74,6 +77,7 @@ def _assemble_parcel_result(
     site_score_report: SiteScoreReport | None,
     *,
     require_site_score: bool,
+    market_selection: bool,
 ) -> AnalysisResult:
     evidence_items = {
         "GIS": gis_evidence,
@@ -85,7 +89,15 @@ def _assemble_parcel_result(
             raise ResultAssemblyBlockedError(
                 f"候选地块缺少 {evidence_name} 证据：{parcel_id}"
             )
-        if evidence.status is not EvidenceStatus.READY:
+        intentionally_unverified = (
+            market_selection
+            and evidence_name in {"GIS", "policy"}
+            and evidence.status is EvidenceStatus.NOT_RUN
+        )
+        if (
+            evidence.status is not EvidenceStatus.READY
+            and not intentionally_unverified
+        ):
             raise ResultAssemblyBlockedError(
                 f"候选地块 {evidence_name} 证据未就绪："
                 f"{parcel_id}, status={evidence.status.value}"
@@ -99,6 +111,8 @@ def _assemble_parcel_result(
         )
 
     warnings = list(policy_evidence.notes)
+    if market_selection and MARKET_SCOPE_NOTICE not in warnings:
+        warnings.append(MARKET_SCOPE_NOTICE)
     if policy_evidence.rule_findings:
         warnings.append(
             "PolicyEvidence 中存在规则命中，需按结论等级处理并人工复核"

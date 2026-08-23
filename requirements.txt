@@ -5,6 +5,7 @@ httpx
 openai
 python-dotenv
 langgraph
+langgraph-checkpoint-postgres>=3,<4
 geopandas
 pyproj
 shapely

@@ -27,12 +27,72 @@ def test_compose_explicitly_wires_api_mcp_workbench_and_storage() -> None:
     }
     assert services["api"]["environment"]["SITE_SELECTION_RUNTIME_MODE"] == "fixture"
     assert services["api"]["environment"]["SITE_SELECTION_RUN_MODE"] == "async"
+    assert services["api"]["environment"][
+        "SITE_SELECTION_SUPERVISOR_ENABLED"
+    ] == "${SITE_SELECTION_SUPERVISOR_ENABLED:-true}"
+    assert services["api"]["environment"][
+        "SITE_SELECTION_SUPERVISOR_SESSION_TTL_SECONDS"
+    ] == "${SITE_SELECTION_SUPERVISOR_SESSION_TTL_SECONDS:-7200}"
+    assert services["api"]["environment"][
+        "SITE_SELECTION_SUPERVISOR_LOCK_TTL_SECONDS"
+    ] == "${SITE_SELECTION_SUPERVISOR_LOCK_TTL_SECONDS:-120}"
     assert services["api"]["environment"]["SITE_SELECTION_POI_PROVIDER"] == (
-        "${SITE_SELECTION_POI_PROVIDER:-fixture}"
+        "${SITE_SELECTION_POI_PROVIDER:-auto}"
     )
     assert services["worker"]["environment"]["SITE_SELECTION_POI_PROVIDER"] == (
-        "${SITE_SELECTION_POI_PROVIDER:-fixture}"
+        "${SITE_SELECTION_POI_PROVIDER:-auto}"
     )
+    for service_name in ("api", "worker"):
+        assert services[service_name]["environment"][
+            "SITE_SELECTION_SUPERVISOR_ENABLED"
+        ] == "${SITE_SELECTION_SUPERVISOR_ENABLED:-true}"
+        assert services[service_name]["environment"][
+            "SITE_SELECTION_SUPERVISOR_SESSION_TTL_SECONDS"
+        ] == "${SITE_SELECTION_SUPERVISOR_SESSION_TTL_SECONDS:-7200}"
+        assert services[service_name]["environment"][
+            "SITE_SELECTION_SUPERVISOR_LOCK_TTL_SECONDS"
+        ] == "${SITE_SELECTION_SUPERVISOR_LOCK_TTL_SECONDS:-120}"
+    for service_name in ("api", "worker"):
+        environment = services[service_name]["environment"]
+        assert environment["SITE_SELECTION_POI_TIMEOUT_SECONDS"] == (
+            "${SITE_SELECTION_POI_TIMEOUT_SECONDS:-15}"
+        )
+        assert environment["SITE_SELECTION_POI_MAX_ATTEMPTS"] == (
+            "${SITE_SELECTION_POI_MAX_ATTEMPTS:-2}"
+        )
+        assert environment["SITE_SELECTION_POI_FAILURE_THRESHOLD"] == (
+            "${SITE_SELECTION_POI_FAILURE_THRESHOLD:-12}"
+        )
+        assert environment["SITE_SELECTION_POI_REQUESTS_PER_SECOND"] == (
+            "${SITE_SELECTION_POI_REQUESTS_PER_SECOND:-1}"
+        )
+        assert environment["SITE_SELECTION_POI_RETRY_BASE_SECONDS"] == (
+            "${SITE_SELECTION_POI_RETRY_BASE_SECONDS:-2}"
+        )
+        assert environment["SITE_SELECTION_POI_RETRY_MAX_SECONDS"] == (
+            "${SITE_SELECTION_POI_RETRY_MAX_SECONDS:-8}"
+        )
+        assert environment["SITE_SELECTION_POI_PROXY_URL"] == (
+            "${SITE_SELECTION_POI_PROXY_URL:-}"
+        )
+        assert environment[
+            "SITE_SELECTION_DISCOVERY_SNAPSHOT_TTL_SECONDS"
+        ] == "${SITE_SELECTION_DISCOVERY_SNAPSHOT_TTL_SECONDS:-7200}"
+        assert environment["SITE_SELECTION_AMAP_MAX_PAGES_PER_SEARCH"] == (
+            "${SITE_SELECTION_AMAP_MAX_PAGES_PER_SEARCH:-2}"
+        )
+        assert environment[
+            "SITE_SELECTION_AMAP_MAX_CATEGORIES_PER_QUERY"
+        ] == "${SITE_SELECTION_AMAP_MAX_CATEGORIES_PER_QUERY:-3}"
+        assert environment[
+            "SITE_SELECTION_OVERPASS_MAX_CATEGORIES_PER_QUERY"
+        ] == "${SITE_SELECTION_OVERPASS_MAX_CATEGORIES_PER_QUERY:-3}"
+        assert environment["SITE_SELECTION_EXPLANATION_TIMEOUT_SECONDS"] == (
+            "${SITE_SELECTION_EXPLANATION_TIMEOUT_SECONDS:-15}"
+        )
+        assert environment["SITE_SELECTION_EXPLANATION_MAX_RETRIES"] == (
+            "${SITE_SELECTION_EXPLANATION_MAX_RETRIES:-0}"
+        )
     assert services["api"]["environment"]["AMAP_API_KEY"] == (
         "${AMAP_API_KEY:-}"
     )
@@ -58,3 +118,9 @@ def test_compose_explicitly_wires_api_mcp_workbench_and_storage() -> None:
     assert services["mcp"]["depends_on"]["api"]["condition"] == (
         "service_healthy"
     )
+
+
+def test_requirements_include_official_postgres_checkpointer() -> None:
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+    assert "langgraph-checkpoint-postgres>=3,<4" in requirements

@@ -7,6 +7,11 @@ from typing import Any, Literal
 from langgraph.graph import END, START, StateGraph
 
 from .comparison import CandidateComparisonBlockedError, compare_candidate_results
+from .analysis_scope import (
+    is_market_selection,
+    mark_market_policy_unverified,
+    mark_market_spatial_unverified,
+)
 from .constraints import ConstraintLayerSpec
 from .domain import DatasetManifest, ProjectRequest
 from .evidence import AgentState, AnalysisStatus, EvidenceStatus
@@ -107,9 +112,13 @@ def build_site_selection_graph(
         "gis_collection",
         _safe_node(
             "gis_collection",
-            lambda state: _collect_ready_gis_evidence(
-                state,
-                dependencies.spatial_gateway,
+            lambda state: (
+                mark_market_spatial_unverified(state)
+                if is_market_selection(state)
+                else _collect_ready_gis_evidence(
+                    state,
+                    dependencies.spatial_gateway,
+                )
             ),
         ),
     )
@@ -117,10 +126,14 @@ def build_site_selection_graph(
         "gis_metrics",
         _safe_node(
             "gis_metrics",
-            lambda state: run_gis_analysis(
-                state,
-                dependencies.spatial_gateway,
-                buffer_distance_m=dependencies.buffer_distance_m,
+            lambda state: (
+                state
+                if is_market_selection(state)
+                else run_gis_analysis(
+                    state,
+                    dependencies.spatial_gateway,
+                    buffer_distance_m=dependencies.buffer_distance_m,
+                )
             ),
         ),
     )
@@ -128,10 +141,14 @@ def build_site_selection_graph(
         "spatial_constraints",
         _safe_node(
             "spatial_constraints",
-            lambda state: run_spatial_constraint_analysis(
-                state,
-                dependencies.spatial_gateway,
-                dependencies.constraint_specs,
+            lambda state: (
+                state
+                if is_market_selection(state)
+                else run_spatial_constraint_analysis(
+                    state,
+                    dependencies.spatial_gateway,
+                    dependencies.constraint_specs,
+                )
             ),
         ),
     )
@@ -139,9 +156,13 @@ def build_site_selection_graph(
         "policy_rules",
         _safe_node(
             "policy_rules",
-            lambda state: evaluate_policy_rules(
-                state,
-                dependencies.rules,
+            lambda state: (
+                mark_market_policy_unverified(state)
+                if is_market_selection(state)
+                else evaluate_policy_rules(
+                    state,
+                    dependencies.rules,
+                )
             ),
         ),
     )
@@ -152,6 +173,7 @@ def build_site_selection_graph(
             lambda state: (
                 score_site_state(state, dependencies.site_scoring_config)
                 if dependencies.site_scoring_config is not None
+                and not is_market_selection(state)
                 else state
             ),
         ),

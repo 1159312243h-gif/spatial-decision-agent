@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from math import pi
 from typing import Protocol
@@ -101,10 +102,22 @@ class MockPOIGateway:
 def execute_poi_queries(
     state: AgentState,
     gateway: POIGateway,
+    *,
+    max_workers: int = 4,
 ) -> AgentState:
-    """Execute all prepared queries and return a newly validated state."""
+    """Execute prepared queries with bounded concurrency and stable ordering."""
 
-    feature_sets = [gateway.search(query) for query in state.poi_queries]
+    if max_workers <= 0:
+        raise ValueError("POI query worker count must be positive")
+    queries = list(state.poi_queries)
+    if len(queries) <= 1 or max_workers == 1:
+        feature_sets = [gateway.search(query) for query in queries]
+    else:
+        with ThreadPoolExecutor(
+            max_workers=min(max_workers, len(queries)),
+            thread_name_prefix="site-selection-poi",
+        ) as executor:
+            feature_sets = list(executor.map(gateway.search, queries))
     evidence = [
         POIEvidence(
             parcel_id=parcel.parcel_id,

@@ -1,10 +1,14 @@
 from datetime import date, datetime, timezone
+from dataclasses import replace
 
 import geopandas as gpd
 import pytest
 from shapely.geometry import Point, Polygon
 
+from app.site_selection_bootstrap import _fixture_poi_scoring_config
+
 from practice.site_selection import (
+    AnalysisScope,
     AgentState,
     AnalysisStatus,
     CandidateParcel,
@@ -101,6 +105,38 @@ def request() -> ProjectRequest:
         ],
         requested_at=NOW,
     )
+
+
+def test_sequential_market_selection_skips_compliance_without_failing() -> None:
+    market_request = ProjectRequest(
+        request_id="REQ-market-workflow",
+        project_type=ProjectType.COFFEE_SHOP,
+        analysis_scope=AnalysisScope.MARKET_SELECTION,
+        candidate_parcels=[
+            CandidateParcel(
+                parcel_id="A01",
+                longitude=121.47,
+                latitude=31.23,
+            )
+        ],
+        requested_at=NOW,
+    )
+    market_dependencies = replace(
+        dependencies(),
+        poi_scoring_config=_fixture_poi_scoring_config(ProjectType.COFFEE_SHOP),
+        site_scoring_config=None,
+    )
+
+    result = run_site_selection_workflow(
+        market_request,
+        manifests(),
+        market_dependencies,
+    )
+
+    assert result.status is AnalysisStatus.COMPLETED
+    assert result.results[0].gis_evidence.status is EvidenceStatus.NOT_RUN
+    assert result.results[0].policy_evidence.status is EvidenceStatus.NOT_RUN
+    assert result.results[0].overall_soft_score is not None
 
 
 def constraint_spec() -> ConstraintLayerSpec:

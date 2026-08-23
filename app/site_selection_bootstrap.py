@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from math import pi
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from typing import Any
 
 import geopandas as gpd
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pyproj import CRS
 from shapely.geometry import shape
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -29,6 +31,10 @@ from app.services.site_selection_poi_provider import (
     ConfiguredPOIProvider,
     build_configured_poi_provider,
 )
+from app.services.site_selection_land_use_provider import (
+    ConfiguredLandUseProvider,
+    build_configured_land_use_provider,
+)
 from app.services.site_selection_service import (
     SiteSelectionRuntime,
     SiteSelectionRuntimeRegistry,
@@ -37,6 +43,7 @@ from practice.site_selection import (
     ConstraintLayerSpec,
     ConstraintLayerType,
     DatasetManifest,
+    DatasetEvidenceLevel,
     DatasetSource,
     GISMetricScoringRule,
     MissingMetricPolicy,
@@ -50,6 +57,9 @@ from practice.site_selection import (
     SiteSelectionWorkflowDependencies,
     SpatialConstraintRelation,
     get_project_profile,
+    build_region_resolver,
+    OpenAIScenarioInterpreter,
+    RegionCatalogEntry,
     load_rule_pack,
 )
 from practice.site_selection.mcp_server import create_site_selection_mcp_server
@@ -69,7 +79,10 @@ from practice.site_selection.spatial import (
     PostGISSpatialQueryEngine,
     StoredPostGISSpatialDatasetGateway,
 )
-from practice.site_selection.storage import RedisSiteSelectionRuntimeStore
+from practice.site_selection.storage import (
+    RedisSiteSelectionRuntimeStore,
+    RedisSupervisorSessionCoordinator,
+)
 from practice.site_selection.storage.poi_repository import PostgresPOIRepository
 from practice.site_selection.storage.postgres import (
     PostgresSpatialRepository,
@@ -197,6 +210,12 @@ class SiteSelectionBootstrap:
     explainer: SiteSelectionEvidenceExplainer | None = None
     job_queue: SiteSelectionJobQueue | None = None
     poi_provider: ConfiguredPOIProvider | None = None
+    land_use_provider: ConfiguredLandUseProvider | None = None
+    supervisor_checkpointer: Any | None = None
+    supervisor_checkpointer_context: Any | None = None
+    supervisor_coordinator: RedisSupervisorSessionCoordinator | None = None
+    scenario_interpreter: Any | None = None
+    region_resolver: Any | None = None
     run_mode: str = "sync"
     _closed: bool = field(default=False, init=False, repr=False)
 
@@ -209,15 +228,27 @@ class SiteSelectionBootstrap:
                 self.job_queue.close()
         finally:
             try:
-                if self.poi_provider is not None:
-                    self.poi_provider.close()
+                if self.supervisor_checkpointer_context is not None:
+                    self.supervisor_checkpointer_context.__exit__(
+                        None,
+                        None,
+                        None,
+                    )
             finally:
                 try:
-                    close = getattr(self.redis_client, "close", None)
-                    if callable(close):
-                        close()
+                    if self.poi_provider is not None:
+                        self.poi_provider.close()
                 finally:
-                    self.engine.dispose()
+                    try:
+                        if self.land_use_provider is not None:
+                            self.land_use_provider.close()
+                    finally:
+                        try:
+                            close = getattr(self.redis_client, "close", None)
+                            if callable(close):
+                                close()
+                        finally:
+                            self.engine.dispose()
 
 
 def load_fixture_spatial_seed(
@@ -298,6 +329,7 @@ def build_fixture_runtime_registry(
     fixture_root: str | Path = FIXTURE_ROOT,
     spatial_gateway: Any | None = None,
     poi_adapter: POISourceAdapter | None = None,
+    authoritative_land_manifest: DatasetManifest | None = None,
 ) -> SiteSelectionRuntimeRegistry:
     root = Path(fixture_root)
     spatial_seed = load_fixture_spatial_seed(root / "spatial_layers.json")
@@ -340,6 +372,12 @@ def build_fixture_runtime_registry(
             gateway=gateway,
             poi_adapter=active_poi_adapter,
             spatial_seed=spatial_seed,
+            discovery_layer=(
+                None
+                if authoritative_land_manifest is not None
+                else layer_by_id["demo-coffee-discovery-pool"]
+            ),
+            discovery_manifest=authoritative_land_manifest,
         ),
         ProjectType.CONVENIENCE_STORE: _build_fixture_runtime(
             ProjectType.CONVENIENCE_STORE,
@@ -351,6 +389,12 @@ def build_fixture_runtime_registry(
             gateway=gateway,
             poi_adapter=active_poi_adapter,
             spatial_seed=spatial_seed,
+            discovery_layer=(
+                None
+                if authoritative_land_manifest is not None
+                else layer_by_id["demo-convenience-discovery-pool"]
+            ),
+            discovery_manifest=authoritative_land_manifest,
         ),
     }
     return SiteSelectionRuntimeRegistry(runtimes)
@@ -386,6 +430,9 @@ def build_site_selection_bootstrap_from_environment(
     migration_applier: Callable[[Engine], None] = apply_migration,
     fixture_root: str | Path = FIXTURE_ROOT,
     include_mcp: bool = True,
+    supervisor_checkpointer_factory: Callable[
+        [str], tuple[Any, Any]
+    ] | None = None,
 ) -> SiteSelectionBootstrap | None:
     values = os.environ if environ is None else environ
     mode = values.get("SITE_SELECTION_RUNTIME_MODE", "").strip().lower()
@@ -424,10 +471,40 @@ def build_site_selection_bootstrap_from_environment(
         "SITE_SELECTION_POI_CACHE_TTL_SECONDS",
         3_600,
     )
+    land_use_cache_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_LAND_USE_CACHE_TTL_SECONDS",
+        3_600,
+    )
+    discovery_snapshot_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_DISCOVERY_SNAPSHOT_TTL_SECONDS",
+        7_200,
+    )
     event_ttl_seconds = _positive_int_environment(
         values,
         "SITE_SELECTION_EVENT_TTL_SECONDS",
         86_400,
+    )
+    scenario_session_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_SCENARIO_SESSION_TTL_SECONDS",
+        86_400,
+    )
+    supervisor_enabled = _boolean_environment(
+        values,
+        "SITE_SELECTION_SUPERVISOR_ENABLED",
+        False,
+    )
+    supervisor_session_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_SUPERVISOR_SESSION_TTL_SECONDS",
+        7_200,
+    )
+    supervisor_lock_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_SUPERVISOR_LOCK_TTL_SECONDS",
+        120,
     )
     if redis_factory is None:
         from redis import Redis
@@ -442,6 +519,9 @@ def build_site_selection_bootstrap_from_environment(
     redis_client = None
     job_queue = None
     configured_poi_provider = None
+    configured_land_use_provider = None
+    supervisor_checkpointer = None
+    supervisor_checkpointer_context = None
     try:
         migration_applier(engine)
         root = Path(fixture_root)
@@ -460,13 +540,51 @@ def build_site_selection_bootstrap_from_environment(
             run_ttl_seconds=run_ttl_seconds,
             idempotency_ttl_seconds=idempotency_ttl_seconds,
             poi_cache_ttl_seconds=poi_cache_ttl_seconds,
+            land_use_cache_ttl_seconds=land_use_cache_ttl_seconds,
+            discovery_snapshot_ttl_seconds=(
+                discovery_snapshot_ttl_seconds
+            ),
             event_ttl_seconds=event_ttl_seconds,
+            scenario_session_ttl_seconds=scenario_session_ttl_seconds,
         )
+        supervisor_coordinator = None
+        if supervisor_enabled:
+            factory = (
+                supervisor_checkpointer_factory
+                or open_postgres_supervisor_checkpointer
+            )
+            (
+                supervisor_checkpointer,
+                supervisor_checkpointer_context,
+            ) = factory(database_url)
+            supervisor_coordinator = RedisSupervisorSessionCoordinator(
+                redis_client,
+                namespace=runtime_namespace,
+                session_ttl_seconds=supervisor_session_ttl_seconds,
+                lock_ttl_seconds=supervisor_lock_ttl_seconds,
+            )
         configured_poi_provider = build_configured_poi_provider(
             values,
             FixturePOIAdapter.from_json(root / "poi.json"),
             cache_store=run_store,
             engine=engine,
+        )
+        configured_land_use_provider = build_configured_land_use_provider(
+            values,
+            cache_store=run_store,
+        )
+        authoritative_land_manifest = (
+            _configured_authoritative_land_manifest(engine, values)
+        )
+        region_payload = json.loads(
+            (root / "regions.json").read_text(encoding="utf-8")
+        )
+        region_resolver = build_region_resolver(
+            values,
+            [
+                RegionCatalogEntry.model_validate(item)
+                for item in region_payload["entries"]
+            ],
         )
         if run_mode == "async":
             queue_settings = RQQueueSettings(
@@ -499,6 +617,7 @@ def build_site_selection_bootstrap_from_environment(
                 engine,
                 fixture_root=root,
                 poi_adapter=configured_poi_provider.adapter,
+                authoritative_land_manifest=authoritative_land_manifest,
             ),
             run_store=run_store,
             report_store=FileSystemSiteSelectionReportStore(report_dir),
@@ -512,11 +631,25 @@ def build_site_selection_bootstrap_from_environment(
             explainer=_build_optional_explainer(values),
             job_queue=job_queue,
             poi_provider=configured_poi_provider,
+            land_use_provider=configured_land_use_provider,
+            supervisor_checkpointer=supervisor_checkpointer,
+            supervisor_checkpointer_context=supervisor_checkpointer_context,
+            supervisor_coordinator=supervisor_coordinator,
+            scenario_interpreter=_build_optional_scenario_interpreter(values),
+            region_resolver=region_resolver,
             run_mode=run_mode,
         )
     except Exception as exc:
+        if supervisor_checkpointer_context is not None:
+            try:
+                supervisor_checkpointer_context.__exit__(
+                    *sys.exc_info(),
+                )
+            except Exception:
+                pass
         _close_quietly(job_queue)
         _close_quietly(configured_poi_provider)
+        _close_quietly(configured_land_use_provider)
         _close_quietly(redis_client)
         try:
             engine.dispose()
@@ -526,6 +659,26 @@ def build_site_selection_bootstrap_from_environment(
             "fixture 选址运行时初始化失败："
             f"error_type={type(exc).__name__}"
         ) from exc
+
+
+def open_postgres_supervisor_checkpointer(database_url: str) -> tuple[Any, Any]:
+    """Open and initialize the official durable LangGraph Postgres saver."""
+
+    from langgraph.checkpoint.postgres import PostgresSaver
+
+    connection_string = database_url.replace(
+        "postgresql+psycopg://",
+        "postgresql://",
+        1,
+    )
+    context = PostgresSaver.from_conn_string(connection_string)
+    saver = context.__enter__()
+    try:
+        saver.setup()
+    except Exception:
+        context.__exit__(*sys.exc_info())
+        raise
+    return saver, context
 
 
 def _build_fixture_runtime(
@@ -539,11 +692,17 @@ def _build_fixture_runtime(
     gateway: StoredPostGISSpatialDatasetGateway,
     poi_adapter: POISourceAdapter,
     spatial_seed: FixtureSpatialSeed,
+    discovery_layer: FixtureLayerSeed | None = None,
+    discovery_manifest: DatasetManifest | None = None,
 ) -> SiteSelectionRuntime:
     manifests = [
         _fixture_manifest(candidate_layer, spatial_seed),
         _fixture_manifest(constraint_layer, spatial_seed),
     ]
+    if discovery_layer is not None:
+        manifests.append(_fixture_manifest(discovery_layer, spatial_seed))
+    if discovery_manifest is not None:
+        manifests.append(discovery_manifest.model_copy(deep=True))
     rule_pack = load_rule_pack(rule_path)
     return SiteSelectionRuntime(
         project_type=project_type,
@@ -581,8 +740,64 @@ def _fixture_manifest(
         location=layer.layer_id,
         version=seed.version,
         crs=seed.crs,
+        evidence_level=DatasetEvidenceLevel.SYNTHETIC,
+        source_uri="data/fixtures/spatial_layers.json",
+        license="项目内置合成演示数据",
         required_fields=layer.required_fields,
         updated_at=seed.updated_at,
+    )
+
+
+def _configured_authoritative_land_manifest(
+    engine: Engine,
+    values: Mapping[str, str],
+) -> DatasetManifest | None:
+    layer_id = values.get(
+        "SITE_SELECTION_AUTHORITATIVE_LAND_LAYER_ID",
+        "",
+    ).strip()
+    if not layer_id:
+        return None
+    with engine.connect() as connection:
+        stored = PostgresSpatialRepository(connection).get_layer(layer_id)
+    if stored is None:
+        raise ValueError(f"权威用地图层不存在：{layer_id}")
+    required = {
+        "parcel_id",
+        "name",
+        "land_use_class",
+        "suitability",
+        "area_hectares",
+    }
+    if not required.issubset(stored.required_fields):
+        missing = sorted(required - set(stored.required_fields))
+        raise ValueError("权威用地图层缺少字段：" + ", ".join(missing))
+    if stored.metadata.get("is_fixture") is True:
+        raise ValueError("权威用地图层不能标记为 Fixture")
+    if stored.metadata.get("evidence_level") != "authoritative":
+        raise ValueError("权威用地图层必须显式标记 evidence_level=authoritative")
+    analysis_crs = str(stored.metadata.get("analysis_crs", "")).strip()
+    if not analysis_crs:
+        analysis_crs = stored.source_crs
+    crs = CRS.from_user_input(analysis_crs)
+    if crs.is_geographic:
+        raise ValueError("权威用地图层必须配置米制 analysis_crs")
+    source_uri = str(stored.metadata.get("source_uri", "")).strip()
+    license_value = str(stored.metadata.get("license", "")).strip()
+    if not source_uri or not license_value:
+        raise ValueError("权威用地图层必须记录 source_uri 和 license")
+    return DatasetManifest(
+        dataset_id=stored.layer_id,
+        name=stored.name,
+        source=DatasetSource.POSTGIS,
+        location=stored.layer_id,
+        version=stored.version,
+        crs=analysis_crs,
+        evidence_level=DatasetEvidenceLevel.AUTHORITATIVE,
+        source_uri=source_uri,
+        license=license_value,
+        required_fields=stored.required_fields,
+        updated_at=stored.updated_at,
     )
 
 
@@ -699,6 +914,59 @@ def _positive_int_environment(
     return value
 
 
+def _boolean_environment(
+    values: Mapping[str, str],
+    name: str,
+    default: bool,
+) -> bool:
+    raw_value = values.get(name, str(default)).strip().lower()
+    if raw_value in {"1", "true", "yes", "on"}:
+        return True
+    if raw_value in {"0", "false", "no", "off"}:
+        return False
+    raise SiteSelectionBootstrapError(
+        f"环境变量 {name} 必须是 true 或 false"
+    )
+
+
+def _positive_float_environment(
+    values: Mapping[str, str],
+    name: str,
+    default: float,
+) -> float:
+    raw_value = values.get(name, str(default)).strip()
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise SiteSelectionBootstrapError(
+            f"环境变量 {name} 必须是正数"
+        ) from exc
+    if value <= 0:
+        raise SiteSelectionBootstrapError(
+            f"环境变量 {name} 必须是正数"
+        )
+    return value
+
+
+def _non_negative_int_environment(
+    values: Mapping[str, str],
+    name: str,
+    default: int,
+) -> int:
+    raw_value = values.get(name, str(default)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise SiteSelectionBootstrapError(
+            f"环境变量 {name} 必须是非负整数"
+        ) from exc
+    if value < 0:
+        raise SiteSelectionBootstrapError(
+            f"环境变量 {name} 必须是非负整数"
+        )
+    return value
+
+
 def _close_quietly(resource: Any | None) -> None:
     if resource is None:
         return
@@ -713,6 +981,8 @@ def _close_quietly(resource: Any | None) -> None:
 
 def _build_optional_explainer(
     values: Mapping[str, str],
+    *,
+    client_factory: Callable[..., Any] | None = None,
 ) -> SiteSelectionEvidenceExplainer | None:
     names = ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL")
     configured = {name: values.get(name, "").strip() for name in names}
@@ -723,14 +993,65 @@ def _build_optional_explainer(
         raise SiteSelectionBootstrapError(
             "LLM 解释配置不完整：" + ", ".join(missing)
         )
-    from openai import OpenAI
+    if client_factory is None:
+        from openai import OpenAI
 
-    client = OpenAI(
+        client_factory = OpenAI
+
+    client = client_factory(
         api_key=configured["LLM_API_KEY"],
         base_url=configured["LLM_BASE_URL"],
-        timeout=60.0,
+        timeout=_positive_float_environment(
+            values,
+            "SITE_SELECTION_EXPLANATION_TIMEOUT_SECONDS",
+            15,
+        ),
+        max_retries=_non_negative_int_environment(
+            values,
+            "SITE_SELECTION_EXPLANATION_MAX_RETRIES",
+            0,
+        ),
     )
     return OpenAISiteSelectionEvidenceExplainer(
         client,
         configured["LLM_MODEL"],
     )
+
+
+def _build_optional_scenario_interpreter(
+    values: Mapping[str, str],
+    *,
+    client_factory: Callable[..., Any] | None = None,
+):
+    if not _boolean_environment(
+        values,
+        "SITE_SELECTION_CONVERSATION_LLM_ENABLED",
+        False,
+    ):
+        return None
+    names = ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL")
+    configured = {name: values.get(name, "").strip() for name in names}
+    missing = [name for name, value in configured.items() if not value]
+    if missing:
+        raise SiteSelectionBootstrapError(
+            "LLM 对话解析配置不完整：" + ", ".join(missing)
+        )
+    if client_factory is None:
+        from openai import OpenAI
+
+        client_factory = OpenAI
+    client = client_factory(
+        api_key=configured["LLM_API_KEY"],
+        base_url=configured["LLM_BASE_URL"],
+        timeout=_positive_float_environment(
+            values,
+            "SITE_SELECTION_CONVERSATION_TIMEOUT_SECONDS",
+            12,
+        ),
+        max_retries=_non_negative_int_environment(
+            values,
+            "SITE_SELECTION_CONVERSATION_MAX_RETRIES",
+            0,
+        ),
+    )
+    return OpenAIScenarioInterpreter(client, configured["LLM_MODEL"])

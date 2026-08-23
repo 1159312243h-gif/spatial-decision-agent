@@ -58,13 +58,14 @@ def build_poi_queries(
     request: ProjectRequest,
     profile: ProjectProfile,
     *,
-    limit: int = 100,
+    limit: int | None = None,
 ) -> list[POIQuery]:
     """Derive deterministic POI queries for every parcel and profile group."""
 
     if request.project_type != profile.project_type:
         raise ValueError("项目请求类型必须与 ProjectProfile 类型一致")
 
+    query_limit = profile.poi_query_limit if limit is None else limit
     return [
         POIQuery(
             query_id=(
@@ -76,7 +77,7 @@ def build_poi_queries(
             latitude=parcel.latitude,
             categories=list(group.categories),
             radius_m=group.query_radius_m,
-            limit=limit,
+            limit=query_limit,
         )
         for parcel in request.candidate_parcels
         for group in profile.poi_groups

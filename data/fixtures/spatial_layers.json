@@ -826,6 +826,947 @@
       ]
     },
     {
+      "layer_id": "demo-coffee-discovery-pool",
+      "project_id": "fixture-coffee-shop",
+      "name": "合成咖啡店机会单元",
+      "layer_type": "retail_opportunity",
+      "source_id_field": "parcel_id",
+      "required_fields": [
+        "parcel_id",
+        "name",
+        "land_use_class",
+        "suitability",
+        "area_hectares"
+      ],
+      "features": [
+        {
+          "source_feature_id": "COF-D01",
+          "properties": {
+            "parcel_id": "COF-D01",
+            "name": "机会单元 01",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337551.126656,
+                  3447022.658384
+                ],
+                [
+                  337574.843738,
+                  3447022.658384
+                ],
+                [
+                  337574.843738,
+                  3447041.63205
+                ],
+                [
+                  337551.126656,
+                  3447041.63205
+                ],
+                [
+                  337551.126656,
+                  3447022.658384
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D02",
+          "properties": {
+            "parcel_id": "COF-D02",
+            "name": "机会单元 02",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339075.076745,
+                  3446998.106579
+                ],
+                [
+                  339101.769441,
+                  3446998.106579
+                ],
+                [
+                  339101.769441,
+                  3447019.460736
+                ],
+                [
+                  339075.076745,
+                  3447019.460736
+                ],
+                [
+                  339075.076745,
+                  3446998.106579
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D03",
+          "properties": {
+            "parcel_id": "COF-D03",
+            "name": "机会单元 03",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340599.170936,
+                  3446973.895367
+                ],
+                [
+                  340628.539287,
+                  3446973.895367
+                ],
+                [
+                  340628.539287,
+                  3446997.390048
+                ],
+                [
+                  340599.170936,
+                  3446997.390048
+                ],
+                [
+                  340599.170936,
+                  3446973.895367
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D04",
+          "properties": {
+            "parcel_id": "COF-D04",
+            "name": "机会单元 04",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342123.371405,
+                  3446949.994439
+                ],
+                [
+                  342155.19121,
+                  3446949.994439
+                ],
+                [
+                  342155.19121,
+                  3446975.450283
+                ],
+                [
+                  342123.371405,
+                  3446975.450283
+                ],
+                [
+                  342123.371405,
+                  3446949.994439
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D05",
+          "properties": {
+            "parcel_id": "COF-D05",
+            "name": "机会单元 05",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343647.654009,
+                  3446926.38443
+                ],
+                [
+                  343681.749464,
+                  3446926.38443
+                ],
+                [
+                  343681.749464,
+                  3446953.660794
+                ],
+                [
+                  343647.654009,
+                  3446953.660794
+                ],
+                [
+                  343647.654009,
+                  3446926.38443
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D06",
+          "properties": {
+            "parcel_id": "COF-D06",
+            "name": "机会单元 06",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337564.991716,
+                  3448019.124102
+                ],
+                [
+                  337591.684412,
+                  3448019.124102
+                ],
+                [
+                  337591.684412,
+                  3448040.478259
+                ],
+                [
+                  337564.991716,
+                  3448040.478259
+                ],
+                [
+                  337564.991716,
+                  3448019.124102
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D07",
+          "properties": {
+            "parcel_id": "COF-D07",
+            "name": "机会单元 07",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339088.947483,
+                  3447994.68842
+                ],
+                [
+                  339118.315833,
+                  3447994.68842
+                ],
+                [
+                  339118.315833,
+                  3448018.1831
+                ],
+                [
+                  339088.947483,
+                  3448018.1831
+                ],
+                [
+                  339088.947483,
+                  3447994.68842
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D08",
+          "properties": {
+            "parcel_id": "COF-D08",
+            "name": "机会单元 08",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340613.009476,
+                  3447970.563063
+                ],
+                [
+                  340644.829281,
+                  3447970.563063
+                ],
+                [
+                  340644.829281,
+                  3447996.018907
+                ],
+                [
+                  340613.009476,
+                  3447996.018907
+                ],
+                [
+                  340613.009476,
+                  3447970.563063
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D09",
+          "properties": {
+            "parcel_id": "COF-D09",
+            "name": "机会单元 09",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342137.153553,
+                  3447946.728668
+                ],
+                [
+                  342171.249008,
+                  3447946.728668
+                ],
+                [
+                  342171.249008,
+                  3447974.005032
+                ],
+                [
+                  342137.153553,
+                  3447974.005032
+                ],
+                [
+                  342137.153553,
+                  3447946.728668
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D10",
+          "properties": {
+            "parcel_id": "COF-D10",
+            "name": "机会单元 10",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343667.618879,
+                  3447928.176516
+                ],
+                [
+                  343691.335961,
+                  3447928.176516
+                ],
+                [
+                  343691.335961,
+                  3447947.150182
+                ],
+                [
+                  343667.618879,
+                  3447947.150182
+                ],
+                [
+                  343667.618879,
+                  3447928.176516
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D11",
+          "properties": {
+            "parcel_id": "COF-D11",
+            "name": "机会单元 11",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337579.010765,
+                  3449015.711077
+                ],
+                [
+                  337608.379116,
+                  3449015.711077
+                ],
+                [
+                  337608.379116,
+                  3449039.205757
+                ],
+                [
+                  337579.010765,
+                  3449039.205757
+                ],
+                [
+                  337579.010765,
+                  3449015.711077
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D12",
+          "properties": {
+            "parcel_id": "COF-D12",
+            "name": "机会单元 12",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339102.934292,
+                  3448991.361215
+                ],
+                [
+                  339134.754098,
+                  3448991.361215
+                ],
+                [
+                  339134.754098,
+                  3449016.817059
+                ],
+                [
+                  339102.934292,
+                  3449016.817059
+                ],
+                [
+                  339102.934292,
+                  3448991.361215
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D13",
+          "properties": {
+            "parcel_id": "COF-D13",
+            "name": "机会单元 13",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340626.939853,
+                  3448967.302358
+                ],
+                [
+                  340661.035307,
+                  3448967.302358
+                ],
+                [
+                  340661.035307,
+                  3448994.578721
+                ],
+                [
+                  340626.939853,
+                  3448994.578721
+                ],
+                [
+                  340626.939853,
+                  3448967.302358
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D14",
+          "properties": {
+            "parcel_id": "COF-D14",
+            "name": "机会单元 14",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342157.266609,
+                  3448948.525785
+                ],
+                [
+                  342180.983691,
+                  3448948.525785
+                ],
+                [
+                  342180.983691,
+                  3448967.499451
+                ],
+                [
+                  342157.266609,
+                  3448967.499451
+                ],
+                [
+                  342157.266609,
+                  3448948.525785
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D15",
+          "properties": {
+            "parcel_id": "COF-D15",
+            "name": "机会单元 15",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343680.910614,
+                  3448924.628289
+                ],
+                [
+                  343707.60331,
+                  3448924.628289
+                ],
+                [
+                  343707.60331,
+                  3448945.982445
+                ],
+                [
+                  343680.910614,
+                  3448945.982445
+                ],
+                [
+                  343680.910614,
+                  3448924.628289
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D16",
+          "properties": {
+            "parcel_id": "COF-D16",
+            "name": "机会单元 16",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337593.145923,
+                  3450012.389004
+                ],
+                [
+                  337624.965728,
+                  3450012.389004
+                ],
+                [
+                  337624.965728,
+                  3450037.844848
+                ],
+                [
+                  337593.145923,
+                  3450037.844848
+                ],
+                [
+                  337593.145923,
+                  3450012.389004
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D17",
+          "properties": {
+            "parcel_id": "COF-D17",
+            "name": "机会单元 17",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339117.012976,
+                  3449988.105608
+                ],
+                [
+                  339151.10843,
+                  3449988.105608
+                ],
+                [
+                  339151.10843,
+                  3450015.381971
+                ],
+                [
+                  339117.012976,
+                  3450015.381971
+                ],
+                [
+                  339117.012976,
+                  3449988.105608
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D18",
+          "properties": {
+            "parcel_id": "COF-D18",
+            "name": "机会单元 18",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340647.201173,
+                  3449969.104538
+                ],
+                [
+                  340670.918255,
+                  3449969.104538
+                ],
+                [
+                  340670.918255,
+                  3449988.078204
+                ],
+                [
+                  340647.201173,
+                  3449988.078204
+                ],
+                [
+                  340647.201173,
+                  3449969.104538
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D19",
+          "properties": {
+            "parcel_id": "COF-D19",
+            "name": "机会单元 19",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342170.706568,
+                  3449944.982588
+                ],
+                [
+                  342197.399263,
+                  3449944.982588
+                ],
+                [
+                  342197.399263,
+                  3449966.336744
+                ],
+                [
+                  342170.706568,
+                  3449966.336744
+                ],
+                [
+                  342170.706568,
+                  3449944.982588
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D20",
+          "properties": {
+            "parcel_id": "COF-D20",
+            "name": "机会单元 20",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343694.356187,
+                  3449921.201327
+                ],
+                [
+                  343723.724537,
+                  3449921.201327
+                ],
+                [
+                  343723.724537,
+                  3449944.696007
+                ],
+                [
+                  343694.356187,
+                  3449944.696007
+                ],
+                [
+                  343694.356187,
+                  3449921.201327
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D21",
+          "properties": {
+            "parcel_id": "COF-D21",
+            "name": "机会单元 21",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337607.372992,
+                  3451009.138526
+                ],
+                [
+                  337641.468446,
+                  3451009.138526
+                ],
+                [
+                  337641.468446,
+                  3451036.41489
+                ],
+                [
+                  337607.372992,
+                  3451036.41489
+                ],
+                [
+                  337607.372992,
+                  3451009.138526
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D22",
+          "properties": {
+            "parcel_id": "COF-D22",
+            "name": "机会单元 22",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339137.42264,
+                  3450989.912884
+                ],
+                [
+                  339161.139723,
+                  3450989.912884
+                ],
+                [
+                  339161.139723,
+                  3451008.88655
+                ],
+                [
+                  339137.42264,
+                  3451008.88655
+                ],
+                [
+                  339137.42264,
+                  3450989.912884
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D23",
+          "properties": {
+            "parcel_id": "COF-D23",
+            "name": "机会单元 23",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340660.789434,
+                  3450965.566403
+                ],
+                [
+                  340687.48213,
+                  3450965.566403
+                ],
+                [
+                  340687.48213,
+                  3450986.920559
+                ],
+                [
+                  340660.789434,
+                  3450986.920559
+                ],
+                [
+                  340660.789434,
+                  3450965.566403
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D24",
+          "properties": {
+            "parcel_id": "COF-D24",
+            "name": "机会单元 24",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342184.300401,
+                  3450941.560654
+                ],
+                [
+                  342213.668752,
+                  3450941.560654
+                ],
+                [
+                  342213.668752,
+                  3450965.055334
+                ],
+                [
+                  342184.300401,
+                  3450965.055334
+                ],
+                [
+                  342184.300401,
+                  3450941.560654
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "COF-D25",
+          "properties": {
+            "parcel_id": "COF-D25",
+            "name": "机会单元 25",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343707.917718,
+                  3450917.865327
+                ],
+                [
+                  343739.737523,
+                  3450917.865327
+                ],
+                [
+                  343739.737523,
+                  3450943.321172
+                ],
+                [
+                  343707.917718,
+                  3450943.321172
+                ],
+                [
+                  343707.917718,
+                  3450917.865327
+                ]
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
       "layer_id": "demo-convenience-candidates",
       "project_id": "fixture-convenience-store",
       "name": "合成便利店候选位置",
@@ -1077,6 +2018,947 @@
             "coordinates": [
               344000.564,
               3469553.528
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "layer_id": "demo-convenience-discovery-pool",
+      "project_id": "fixture-convenience-store",
+      "name": "合成便利店机会单元",
+      "layer_type": "retail_opportunity",
+      "source_id_field": "parcel_id",
+      "required_fields": [
+        "parcel_id",
+        "name",
+        "land_use_class",
+        "suitability",
+        "area_hectares"
+      ],
+      "features": [
+        {
+          "source_feature_id": "CVS-D01",
+          "properties": {
+            "parcel_id": "CVS-D01",
+            "name": "机会单元 01",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337841.802267,
+                  3465867.486228
+                ],
+                [
+                  337865.51935,
+                  3465867.486228
+                ],
+                [
+                  337865.51935,
+                  3465886.459894
+                ],
+                [
+                  337841.802267,
+                  3465886.459894
+                ],
+                [
+                  337841.802267,
+                  3465867.486228
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D02",
+          "properties": {
+            "parcel_id": "CVS-D02",
+            "name": "机会单元 02",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339363.020295,
+                  3465842.861876
+                ],
+                [
+                  339389.712991,
+                  3465842.861876
+                ],
+                [
+                  339389.712991,
+                  3465864.216033
+                ],
+                [
+                  339363.020295,
+                  3465864.216033
+                ],
+                [
+                  339363.020295,
+                  3465842.861876
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D03",
+          "properties": {
+            "parcel_id": "CVS-D03",
+            "name": "机会单元 03",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340884.382501,
+                  3465818.578801
+                ],
+                [
+                  340913.750852,
+                  3465818.578801
+                ],
+                [
+                  340913.750852,
+                  3465842.073481
+                ],
+                [
+                  340884.382501,
+                  3465842.073481
+                ],
+                [
+                  340884.382501,
+                  3465818.578801
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D04",
+          "properties": {
+            "parcel_id": "CVS-D04",
+            "name": "机会单元 04",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342405.851061,
+                  3465794.606694
+                ],
+                [
+                  342437.670866,
+                  3465794.606694
+                ],
+                [
+                  342437.670866,
+                  3465820.062538
+                ],
+                [
+                  342405.851061,
+                  3465820.062538
+                ],
+                [
+                  342405.851061,
+                  3465794.606694
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D05",
+          "properties": {
+            "parcel_id": "CVS-D05",
+            "name": "机会单元 05",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343927.401832,
+                  3465770.92619
+                ],
+                [
+                  343961.497287,
+                  3465770.92619
+                ],
+                [
+                  343961.497287,
+                  3465798.202553
+                ],
+                [
+                  343927.401832,
+                  3465798.202553
+                ],
+                [
+                  343927.401832,
+                  3465770.92619
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D06",
+          "properties": {
+            "parcel_id": "CVS-D06",
+            "name": "机会单元 06",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337855.742996,
+                  3466863.976019
+                ],
+                [
+                  337882.435691,
+                  3466863.976019
+                ],
+                [
+                  337882.435691,
+                  3466885.330176
+                ],
+                [
+                  337855.742996,
+                  3466885.330176
+                ],
+                [
+                  337855.742996,
+                  3466863.976019
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D07",
+          "properties": {
+            "parcel_id": "CVS-D07",
+            "name": "机会单元 07",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339376.96599,
+                  3466839.467833
+                ],
+                [
+                  339406.334341,
+                  3466839.467833
+                ],
+                [
+                  339406.334341,
+                  3466862.962513
+                ],
+                [
+                  339376.96599,
+                  3466862.962513
+                ],
+                [
+                  339376.96599,
+                  3466839.467833
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D08",
+          "properties": {
+            "parcel_id": "CVS-D08",
+            "name": "机会单元 08",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340898.295288,
+                  3466815.270656
+                ],
+                [
+                  340930.115093,
+                  3466815.270656
+                ],
+                [
+                  340930.115093,
+                  3466840.7265
+                ],
+                [
+                  340898.295288,
+                  3466840.7265
+                ],
+                [
+                  340898.295288,
+                  3466815.270656
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D09",
+          "properties": {
+            "parcel_id": "CVS-D09",
+            "name": "机会单元 09",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342419.706746,
+                  3466791.365125
+                ],
+                [
+                  342453.8022,
+                  3466791.365125
+                ],
+                [
+                  342453.8022,
+                  3466818.641488
+                ],
+                [
+                  342419.706746,
+                  3466818.641488
+                ],
+                [
+                  342419.706746,
+                  3466791.365125
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D10",
+          "properties": {
+            "parcel_id": "CVS-D10",
+            "name": "机会单元 10",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343947.439527,
+                  3466772.742519
+                ],
+                [
+                  343971.15661,
+                  3466772.742519
+                ],
+                [
+                  343971.15661,
+                  3466791.716185
+                ],
+                [
+                  343947.439527,
+                  3466791.716185
+                ],
+                [
+                  343947.439527,
+                  3466772.742519
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D11",
+          "properties": {
+            "parcel_id": "CVS-D11",
+            "name": "机会单元 11",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337869.837705,
+                  3467860.58707
+                ],
+                [
+                  337899.206056,
+                  3467860.58707
+                ],
+                [
+                  337899.206056,
+                  3467884.08175
+                ],
+                [
+                  337869.837705,
+                  3467884.08175
+                ],
+                [
+                  337869.837705,
+                  3467860.58707
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D12",
+          "properties": {
+            "parcel_id": "CVS-D12",
+            "name": "机会单元 12",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339391.02775,
+                  3467836.164748
+                ],
+                [
+                  339422.847555,
+                  3467836.164748
+                ],
+                [
+                  339422.847555,
+                  3467861.620592
+                ],
+                [
+                  339391.02775,
+                  3467861.620592
+                ],
+                [
+                  339391.02775,
+                  3467836.164748
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D13",
+          "properties": {
+            "parcel_id": "CVS-D13",
+            "name": "机会单元 13",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340912.299904,
+                  3467812.034114
+                ],
+                [
+                  340946.395359,
+                  3467812.034114
+                ],
+                [
+                  340946.395359,
+                  3467839.310477
+                ],
+                [
+                  340912.299904,
+                  3467839.310477
+                ],
+                [
+                  340912.299904,
+                  3467812.034114
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D14",
+          "properties": {
+            "parcel_id": "CVS-D14",
+            "name": "机会单元 14",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342439.893331,
+                  3467793.186448
+                ],
+                [
+                  342463.610413,
+                  3467793.186448
+                ],
+                [
+                  342463.610413,
+                  3467812.160114
+                ],
+                [
+                  342439.893331,
+                  3467812.160114
+                ],
+                [
+                  342439.893331,
+                  3467793.186448
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D15",
+          "properties": {
+            "parcel_id": "CVS-D15",
+            "name": "机会单元 15",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343960.804082,
+                  3467769.218541
+                ],
+                [
+                  343987.496777,
+                  3467769.218541
+                ],
+                [
+                  343987.496777,
+                  3467790.572697
+                ],
+                [
+                  343960.804082,
+                  3467790.572697
+                ],
+                [
+                  343960.804082,
+                  3467769.218541
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D16",
+          "properties": {
+            "parcel_id": "CVS-D16",
+            "name": "机会单元 16",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337884.048517,
+                  3468857.289078
+                ],
+                [
+                  337915.868322,
+                  3468857.289078
+                ],
+                [
+                  337915.868322,
+                  3468882.744922
+                ],
+                [
+                  337884.048517,
+                  3468882.744922
+                ],
+                [
+                  337884.048517,
+                  3468857.289078
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D17",
+          "properties": {
+            "parcel_id": "CVS-D17",
+            "name": "机会单元 17",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339405.181377,
+                  3468832.933265
+                ],
+                [
+                  339439.276831,
+                  3468832.933265
+                ],
+                [
+                  339439.276831,
+                  3468860.209628
+                ],
+                [
+                  339405.181377,
+                  3468860.209628
+                ],
+                [
+                  339405.181377,
+                  3468832.933265
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D18",
+          "properties": {
+            "parcel_id": "CVS-D18",
+            "name": "机会单元 18",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340932.635458,
+                  3468813.860462
+                ],
+                [
+                  340956.35254,
+                  3468813.860462
+                ],
+                [
+                  340956.35254,
+                  3468832.834128
+                ],
+                [
+                  340932.635458,
+                  3468832.834128
+                ],
+                [
+                  340932.635458,
+                  3468813.860462
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D19",
+          "properties": {
+            "parcel_id": "CVS-D19",
+            "name": "机会单元 19",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342453.406812,
+                  3468789.66746
+                ],
+                [
+                  342480.099508,
+                  3468789.66746
+                ],
+                [
+                  342480.099508,
+                  3468811.021617
+                ],
+                [
+                  342453.406812,
+                  3468811.021617
+                ],
+                [
+                  342453.406812,
+                  3468789.66746
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D20",
+          "properties": {
+            "parcel_id": "CVS-D20",
+            "name": "机会单元 20",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343974.322467,
+                  3468765.815831
+                ],
+                [
+                  344003.690817,
+                  3468765.815831
+                ],
+                [
+                  344003.690817,
+                  3468789.310511
+                ],
+                [
+                  343974.322467,
+                  3468789.310511
+                ],
+                [
+                  343974.322467,
+                  3468765.815831
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D21",
+          "properties": {
+            "parcel_id": "CVS-D21",
+            "name": "机会单元 21",
+            "land_use_class": "居住配套商业",
+            "suitability": "allowed",
+            "area_hectares": 0.093
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  337898.351233,
+                  3469854.062684
+                ],
+                [
+                  337932.446687,
+                  3469854.062684
+                ],
+                [
+                  337932.446687,
+                  3469881.339048
+                ],
+                [
+                  337898.351233,
+                  3469881.339048
+                ],
+                [
+                  337898.351233,
+                  3469854.062684
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D22",
+          "properties": {
+            "parcel_id": "CVS-D22",
+            "name": "机会单元 22",
+            "land_use_class": "公共绿地",
+            "suitability": "excluded",
+            "area_hectares": 0.045
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  339425.665978,
+                  3469834.764669
+                ],
+                [
+                  339449.383061,
+                  3469834.764669
+                ],
+                [
+                  339449.383061,
+                  3469853.738335
+                ],
+                [
+                  339425.665978,
+                  3469853.738335
+                ],
+                [
+                  339425.665978,
+                  3469834.764669
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D23",
+          "properties": {
+            "parcel_id": "CVS-D23",
+            "name": "机会单元 23",
+            "land_use_class": "社区商业服务",
+            "suitability": "allowed",
+            "area_hectares": 0.057
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  340946.297946,
+                  3469810.346497
+                ],
+                [
+                  340972.990641,
+                  3469810.346497
+                ],
+                [
+                  340972.990641,
+                  3469831.700653
+                ],
+                [
+                  340946.297946,
+                  3469831.700653
+                ],
+                [
+                  340946.297946,
+                  3469810.346497
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D24",
+          "properties": {
+            "parcel_id": "CVS-D24",
+            "name": "机会单元 24",
+            "land_use_class": "商业商务混合",
+            "suitability": "allowed",
+            "area_hectares": 0.069
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  342467.074162,
+                  3469786.26974
+                ],
+                [
+                  342496.442512,
+                  3469786.26974
+                ],
+                [
+                  342496.442512,
+                  3469809.76442
+                ],
+                [
+                  342467.074162,
+                  3469809.76442
+                ],
+                [
+                  342467.074162,
+                  3469786.26974
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "source_feature_id": "CVS-D25",
+          "properties": {
+            "parcel_id": "CVS-D25",
+            "name": "机会单元 25",
+            "land_use_class": "轨道交通站点综合开发",
+            "suitability": "review_required",
+            "area_hectares": 0.081
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  343987.956803,
+                  3469762.504088
+                ],
+                [
+                  344019.776609,
+                  3469762.504088
+                ],
+                [
+                  344019.776609,
+                  3469787.959932
+                ],
+                [
+                  343987.956803,
+                  3469787.959932
+                ],
+                [
+                  343987.956803,
+                  3469762.504088
+                ]
+              ]
             ]
           }
         }

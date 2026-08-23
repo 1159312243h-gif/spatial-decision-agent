@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from .analysis_scope import is_market_selection
 from .evidence import (
     AgentState,
     AnalysisResult,
@@ -103,7 +104,11 @@ def compare_candidate_results(state: AgentState) -> AgentState:
                 if uses_site_score
                 else "排名仅依据同一版本的 POI 软评分，不代表合规结论或推荐决定"
             ),
-            "政策规则命中仅随候选地块展示，不参与软评分名次计算",
+            (
+                "当前仅完成商业选址评分，用地与政策合规状态待核验"
+                if is_market_selection(state)
+                else "政策规则命中仅随候选地块展示，不参与软评分名次计算"
+            ),
         ],
     )
 

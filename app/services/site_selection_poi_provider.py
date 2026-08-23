@@ -105,14 +105,20 @@ def build_configured_poi_provider(
             "选择 amap POI Provider 时必须配置 AMAP_API_KEY"
         )
 
-    http_client = http_client_factory(
-        headers={
+    http_client_options: dict[str, Any] = {
+        "headers": {
             "User-Agent": environ.get(
                 "SITE_SELECTION_POI_USER_AGENT",
                 "ai-agent-learning-site-selection/1.0",
             )
         },
-        follow_redirects=True,
+        "follow_redirects": True,
+    }
+    proxy_url = environ.get("SITE_SELECTION_POI_PROXY_URL", "").strip()
+    if proxy_url:
+        http_client_options["proxy"] = proxy_url
+    http_client = http_client_factory(
+        **http_client_options,
     )
     timeout_seconds = _positive_float(
         environ,
@@ -132,6 +138,16 @@ def build_configured_poi_provider(
             http_client,
             GCJ02CoordinateTransformer(),
             rate_limiter=rate_limiter,
+            max_pages_per_search=_positive_int(
+                environ,
+                "SITE_SELECTION_AMAP_MAX_PAGES_PER_SEARCH",
+                2,
+            ),
+            max_categories_per_query=_positive_int(
+                environ,
+                "SITE_SELECTION_AMAP_MAX_CATEGORIES_PER_QUERY",
+                3,
+            ),
             timeout_seconds=timeout_seconds,
             cache_version=environ.get(
                 "SITE_SELECTION_AMAP_CACHE_VERSION",
@@ -148,6 +164,11 @@ def build_configured_poi_provider(
             ),
             rate_limiter=rate_limiter,
             timeout_seconds=timeout_seconds,
+            max_categories_per_query=_positive_int(
+                environ,
+                "SITE_SELECTION_OVERPASS_MAX_CATEGORIES_PER_QUERY",
+                3,
+            ),
             cache_version=environ.get(
                 "SITE_SELECTION_OVERPASS_CACHE_VERSION",
                 "overpass-live-v1",
@@ -164,12 +185,22 @@ def build_configured_poi_provider(
         failure_threshold=_positive_int(
             environ,
             "SITE_SELECTION_POI_FAILURE_THRESHOLD",
-            2,
+            12,
         ),
         recovery_timeout_seconds=_positive_float(
             environ,
             "SITE_SELECTION_POI_RECOVERY_SECONDS",
             30,
+        ),
+        base_backoff_seconds=_positive_float(
+            environ,
+            "SITE_SELECTION_POI_RETRY_BASE_SECONDS",
+            2,
+        ),
+        max_backoff_seconds=_positive_float(
+            environ,
+            "SITE_SELECTION_POI_RETRY_MAX_SECONDS",
+            8,
         ),
     )
     active: POISourceAdapter = reliable
@@ -183,7 +214,10 @@ def build_configured_poi_provider(
     active = CachedPOIAdapter(
         active,
         cache_store,
-        cache_scope=f"workflow:{resolved_mode}",
+        cache_scope=(
+            f"workflow:{resolved_mode}:"
+            f"{getattr(primary, 'cache_token', type(primary).__name__)}"
+        ),
     )
     return ConfiguredPOIProvider(
         requested_mode=requested_mode,

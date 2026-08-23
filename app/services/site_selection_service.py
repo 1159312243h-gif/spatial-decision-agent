@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Protocol
 from uuid import uuid4
@@ -9,11 +9,15 @@ from uuid import uuid4
 from app.schemas.site_selection import SiteSelectionAnalysisCreate
 from practice.site_selection import (
     AgentState,
+    CandidateDiscoverySnapshotNotFoundError,
+    CandidateDiscoverySnapshotStore,
     DatasetManifest,
     ProjectRequest,
     ProjectType,
     SiteSelectionWorkflowDependencies,
+    SnapshotReusingPOIGateway,
     run_site_selection_workflow,
+    validate_snapshot_selection,
 )
 
 
@@ -108,11 +112,13 @@ class SiteSelectionAnalysisService:
         self,
         runtime_provider: SiteSelectionRuntimeProvider,
         *,
+        snapshot_store: CandidateDiscoverySnapshotStore | None = None,
         workflow_runner: WorkflowRunner = run_site_selection_workflow,
         clock: Callable[[], datetime] | None = None,
         request_id_factory: Callable[[], str] | None = None,
     ) -> None:
         self._runtime_provider = runtime_provider
+        self._snapshot_store = snapshot_store
         self._workflow_runner = workflow_runner
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._request_id_factory = request_id_factory or (
@@ -123,6 +129,7 @@ class SiteSelectionAnalysisService:
         request = ProjectRequest(
             request_id=self._request_id_factory(),
             project_type=command.project_type,
+            analysis_scope=command.analysis_scope,
             candidate_parcels=[
                 parcel.to_domain() for parcel in command.candidate_parcels
             ],
@@ -133,10 +140,36 @@ class SiteSelectionAnalysisService:
             raise SiteSelectionRuntimeConfigurationError(
                 "运行时项目类型与分析请求不一致"
             )
+        dependencies = runtime.dependencies
+        snapshot_id = command.poi_evidence_snapshot_id
+        if snapshot_id is not None:
+            snapshot = (
+                self._snapshot_store.get_candidate_discovery_snapshot(
+                    snapshot_id
+                )
+                if self._snapshot_store is not None
+                else None
+            )
+            if snapshot is None:
+                raise CandidateDiscoverySnapshotNotFoundError(
+                    f"候选发现证据快照不存在或已过期：{snapshot_id}"
+                )
+            validate_snapshot_selection(
+                snapshot,
+                command.project_type,
+                request.candidate_parcels,
+            )
+            dependencies = replace(
+                dependencies,
+                poi_gateway=SnapshotReusingPOIGateway(
+                    snapshot,
+                    fallback=dependencies.poi_gateway,
+                ),
+            )
         return self._workflow_runner(
             request,
             runtime.datasets,
-            runtime.dependencies,
+            dependencies,
         )
 
 

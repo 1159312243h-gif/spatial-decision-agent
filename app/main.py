@@ -1,5 +1,7 @@
 from collections.abc import Callable
 from contextlib import asynccontextmanager
+import json
+from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -22,10 +24,27 @@ from app.services.site_selection_queue import (
 )
 from app.services.site_selection_artifacts import FileSystemSiteSelectionReportStore
 from app.services.site_selection_explanation import SiteSelectionEvidenceExplainer
+from app.services.site_selection_conversation import (
+    SiteSelectionConversationService,
+)
+from app.services.site_selection_supervisor import (
+    SiteSelectionSupervisorServiceProtocol,
+    SupervisorSessionCoordinator,
+    UnconfiguredSiteSelectionSupervisorService,
+    build_site_selection_supervisor_service,
+)
 from app.site_selection_bootstrap import (
     build_site_selection_bootstrap_from_environment,
 )
 from practice.site_selection.storage import RedisSiteSelectionRuntimeStore
+from practice.site_selection import (
+    CandidateDiscoveryService,
+    FallbackScenarioInterpreter,
+    FixtureRegionResolver,
+    InMemoryScenarioSessionStore,
+    RegionCatalogEntry,
+)
+from practice.site_selection.scenario import RegionResolver, ScenarioInterpreter
 
 
 def create_app(
@@ -37,6 +56,12 @@ def create_app(
     resource_closer: Callable[[], None] | None = None,
     explainer: SiteSelectionEvidenceExplainer | None = None,
     job_queue: SiteSelectionJobQueue | None = None,
+    supervisor_checkpointer=None,
+    supervisor_coordinator: SupervisorSessionCoordinator | None = None,
+    supervisor_service: SiteSelectionSupervisorServiceProtocol | None = None,
+    scenario_interpreter: ScenarioInterpreter | None = None,
+    region_resolver: RegionResolver | None = None,
+    land_use_provider=None,
 ) -> FastAPI:
     lifespan = None
     if resource_closer is not None:
@@ -57,8 +82,28 @@ def create_app(
         if runtime_provider is not None
         else UnconfiguredSiteSelectionRuntimeProvider()
     )
-    application.state.site_selection_analysis_service = (
-        SiteSelectionAnalysisService(provider)
+    analysis_service = SiteSelectionAnalysisService(
+        provider,
+        snapshot_store=run_store,
+    )
+    candidate_discovery_service = CandidateDiscoveryService(
+        provider,
+        snapshot_store=run_store,
+        land_use_provider=land_use_provider,
+    )
+    application.state.site_selection_analysis_service = analysis_service
+    application.state.site_selection_candidate_discovery_service = (
+        candidate_discovery_service
+    )
+    active_region_resolver = region_resolver or FixtureRegionResolver(
+        _load_default_region_catalog()
+    )
+    application.state.site_selection_conversation_service = (
+        SiteSelectionConversationService(
+            run_store or InMemoryScenarioSessionStore(),
+            FallbackScenarioInterpreter(scenario_interpreter),
+            active_region_resolver,
+        )
     )
     if run_store is not None:
         run_executor = SiteSelectionRunService(
@@ -67,14 +112,28 @@ def create_app(
             report_store=report_store,
             explainer=explainer,
         )
-        application.state.site_selection_run_service = (
+        run_service = (
             QueuedSiteSelectionRunService(run_executor, job_queue)
             if job_queue is not None
             else run_executor
         )
     else:
-        application.state.site_selection_run_service = (
-            UnconfiguredSiteSelectionRunService()
+        run_service = UnconfiguredSiteSelectionRunService()
+    application.state.site_selection_run_service = run_service
+    if supervisor_service is not None:
+        application.state.site_selection_supervisor_service = supervisor_service
+    elif supervisor_checkpointer is not None and supervisor_coordinator is not None:
+        application.state.site_selection_supervisor_service = (
+            build_site_selection_supervisor_service(
+                discovery_runner=candidate_discovery_service.discover,
+                run_service=run_service,
+                checkpointer=supervisor_checkpointer,
+                coordinator=supervisor_coordinator,
+            )
+        )
+    else:
+        application.state.site_selection_supervisor_service = (
+            UnconfiguredSiteSelectionSupervisorService()
         )
     application.state.site_selection_mcp_server = mcp_server
 
@@ -97,9 +156,24 @@ def create_app_from_environment() -> FastAPI:
         resource_closer=bootstrap.close,
         explainer=bootstrap.explainer,
         job_queue=bootstrap.job_queue,
+        supervisor_checkpointer=bootstrap.supervisor_checkpointer,
+        supervisor_coordinator=bootstrap.supervisor_coordinator,
+        scenario_interpreter=bootstrap.scenario_interpreter,
+        region_resolver=bootstrap.region_resolver,
+        land_use_provider=(
+            bootstrap.land_use_provider.provider
+            if bootstrap.land_use_provider is not None
+            else None
+        ),
     )
     application.state.site_selection_bootstrap = bootstrap
     return application
+
+
+def _load_default_region_catalog() -> list[RegionCatalogEntry]:
+    path = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "regions.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return [RegionCatalogEntry.model_validate(item) for item in payload["entries"]]
 
 
 app = create_app_from_environment()

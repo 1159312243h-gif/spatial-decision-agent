@@ -130,3 +130,34 @@ def test_review_warns_when_primary_poi_source_is_synthetic() -> None:
         issue.issue_code == "poi_synthetic_source"
         for issue in reviewed.evidence_review_report.issues
     )
+
+
+def test_review_warns_when_candidate_local_supplement_failed() -> None:
+    result = run_parallel_site_selection_workflow(
+        request(),
+        manifests(),
+        dependencies(),
+    )
+    data = result.model_dump()
+    for container in (data["poi_evidence"], data["results"]):
+        poi_evidence = (
+            container[0]
+            if container is data["poi_evidence"]
+            else container[0]["poi_evidence"]
+        )
+        source = poi_evidence["feature_sets"][0]["source"]
+        source["evidence_snapshot_id"] = "snapshot-review-001"
+        source["evidence_reused"] = True
+        source["evidence_supplement_reason"] = "snapshot_truncated"
+        source["evidence_supplement_error"] = (
+            "候选点在线补查降级为 Fixture：POIRateLimitError"
+        )
+    data["evidence_review_report"] = None
+    incomplete = type(result).model_validate(data)
+
+    reviewed = review_site_selection_evidence(incomplete)
+
+    assert any(
+        issue.issue_code == "poi_candidate_supplement_failed"
+        for issue in reviewed.evidence_review_report.issues
+    )

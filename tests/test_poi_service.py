@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from threading import Barrier
 
 import pytest
 
@@ -155,3 +156,44 @@ def test_execute_poi_queries_does_not_mutate_input_state() -> None:
 
     assert initial_state.poi_feature_sets == []
     assert initial_state.poi_evidence == []
+
+
+def test_execute_poi_queries_uses_bounded_parallelism_and_keeps_order() -> None:
+    initial_state = ProjectIntakeSkill().run(shopping_request())
+    first = query()
+    second = first.model_copy(
+        update={
+            "query_id": "REQ-001:A01:food",
+            "group_key": "food",
+            "categories": ["餐厅"],
+        }
+    )
+    prepared = initial_state.model_copy(
+        deep=True,
+        update={"poi_queries": [first, second]},
+    )
+    rendezvous = Barrier(2, timeout=2)
+
+    class ParallelGateway:
+        def search(self, prepared_query: POIQuery):
+            rendezvous.wait()
+            return MockPOIGateway(clock=lambda: NOW).search(prepared_query)
+
+    result = execute_poi_queries(
+        prepared,
+        ParallelGateway(),
+        max_workers=2,
+    )
+
+    assert [item.query for item in result.poi_feature_sets] == [first, second]
+
+
+def test_execute_poi_queries_rejects_non_positive_worker_count() -> None:
+    initial_state = ProjectIntakeSkill().run(shopping_request())
+
+    with pytest.raises(ValueError, match="worker count"):
+        execute_poi_queries(
+            initial_state,
+            MockPOIGateway(clock=lambda: NOW),
+            max_workers=0,
+        )

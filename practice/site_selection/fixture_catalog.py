@@ -69,6 +69,31 @@ class FixtureCandidateCatalog(BaseModel):
             ],
         }
 
+    def demo_discovery_bounds_for(
+        self,
+        project_type: ProjectType,
+        *,
+        padding_degrees: float = 0.005,
+    ) -> dict[str, float]:
+        if project_type not in {
+            ProjectType.COFFEE_SHOP,
+            ProjectType.CONVENIENCE_STORE,
+        }:
+            raise ValueError("全流程候选发现演示仅支持零售项目")
+        if padding_degrees <= 0:
+            raise ValueError("演示范围边距必须大于 0")
+        candidates = self.project_candidates[project_type]
+        return {
+            "west": min(item.longitude for item in candidates)
+            - padding_degrees,
+            "south": min(item.latitude for item in candidates)
+            - padding_degrees,
+            "east": max(item.longitude for item in candidates)
+            + padding_degrees,
+            "north": max(item.latitude for item in candidates)
+            + padding_degrees,
+        }
+
 
 def load_fixture_candidate_catalog(path: str | Path) -> FixtureCandidateCatalog:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))

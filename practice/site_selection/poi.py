@@ -79,6 +79,12 @@ class POISourceMeta(BaseModel):
     quality_notice: NonEmptyString | None = None
     fallback_from: POIProvider | None = None
     fallback_reason: NonEmptyString | None = None
+    cache_hit: bool = False
+    evidence_snapshot_id: NonEmptyString | None = None
+    evidence_reused: bool = False
+    evidence_supplemented: bool = False
+    evidence_supplement_reason: NonEmptyString | None = None
+    evidence_supplement_error: NonEmptyString | None = None
 
     @field_validator("dataset_updated_at", "queried_at")
     @classmethod
@@ -98,6 +104,30 @@ class POISourceMeta(BaseModel):
             raise ValueError("POI 降级来源和原因必须同时提供")
         if self.fallback_from is not None and self.provider is not POIProvider.MOCK:
             raise ValueError("仅 Fixture/mock 响应可以标记为在线源降级")
+        if self.evidence_reused and self.evidence_snapshot_id is None:
+            raise ValueError("POI 快照复用必须提供快照编号")
+        if self.evidence_supplemented and self.evidence_snapshot_id is None:
+            raise ValueError("POI 候选点补采必须提供原始快照编号")
+        if self.evidence_reused and self.evidence_supplemented:
+            raise ValueError("POI 快照复用与候选点补采不能同时标记")
+        supplement_attempted = (
+            self.evidence_supplemented
+            or self.evidence_supplement_error is not None
+        )
+        if supplement_attempted != (self.evidence_supplement_reason is not None):
+            raise ValueError("POI 候选点补采状态必须提供触发原因")
+        if self.evidence_supplement_error is not None:
+            if self.evidence_snapshot_id is None:
+                raise ValueError("POI 候选点补采失败必须提供原始快照编号")
+            if self.evidence_supplemented:
+                raise ValueError("POI 候选点补采成功状态不能包含失败原因")
+        snapshot_was_used = (
+            self.evidence_reused
+            or self.evidence_supplemented
+            or self.evidence_supplement_error is not None
+        )
+        if (self.evidence_snapshot_id is not None) != snapshot_was_used:
+            raise ValueError("POI 证据快照编号必须与复用或补采状态一致")
         if (
             self.dataset_record_count is not None
             and self.record_count > self.dataset_record_count

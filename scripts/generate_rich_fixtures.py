@@ -385,6 +385,22 @@ def build_spatial_seed() -> dict[str, Any]:
         _candidate_feature(item, "fixture-neighborhood-commercial", transformer)
         for item in CANDIDATES["convenience_store"]
     ]
+    coffee_opportunities = _opportunity_features(
+        "COF-D",
+        longitude_start=121.296,
+        latitude_start=31.146,
+        longitude_step=0.016,
+        latitude_step=0.009,
+        transformer=transformer,
+    )
+    convenience_opportunities = _opportunity_features(
+        "CVS-D",
+        longitude_start=121.296,
+        latitude_start=31.316,
+        longitude_step=0.016,
+        latitude_step=0.009,
+        transformer=transformer,
+    )
     mall_constraints = [
         _constraint_feature("MALL-ECO-01", CANDIDATES["shopping_mall"][0], transformer),
         _constraint_feature("MALL-ECO-02", CANDIDATES["shopping_mall"][4], transformer),
@@ -417,8 +433,10 @@ def build_spatial_seed() -> dict[str, Any]:
             _layer("demo-logistics-constraints", "fixture-logistics-park", "合成敏感目标观察图层", "sensitive_receptor", "constraint_id", ["constraint_id", "level"], logistics_constraints),
             _layer("demo-coffee-candidates", "fixture-coffee-shop", "合成咖啡店候选位置", "candidate_parcel", "parcel_id", ["parcel_id", "land_use", "scenario_profile"], coffee_features),
             _layer("demo-coffee-constraints", "fixture-coffee-shop", "合成咖啡店经营适配观察图层", "land_use", "constraint_id", ["constraint_id", "level"], coffee_constraints),
+            _layer("demo-coffee-discovery-pool", "fixture-coffee-shop", "合成咖啡店机会单元", "retail_opportunity", "parcel_id", ["parcel_id", "name", "land_use_class", "suitability", "area_hectares"], coffee_opportunities),
             _layer("demo-convenience-candidates", "fixture-convenience-store", "合成便利店候选位置", "candidate_parcel", "parcel_id", ["parcel_id", "land_use", "scenario_profile"], convenience_features),
             _layer("demo-convenience-constraints", "fixture-convenience-store", "合成便利店经营适配观察图层", "land_use", "constraint_id", ["constraint_id", "level"], convenience_constraints),
+            _layer("demo-convenience-discovery-pool", "fixture-convenience-store", "合成便利店机会单元", "retail_opportunity", "parcel_id", ["parcel_id", "name", "land_use_class", "suitability", "area_hectares"], convenience_opportunities),
         ],
     }
 
@@ -510,6 +528,50 @@ def _candidate_feature(candidate, land_use, transformer) -> dict[str, Any]:
         },
         "geometry": {"type": "Polygon", "coordinates": [coordinates]},
     }
+
+
+def _opportunity_features(
+    prefix: str,
+    *,
+    longitude_start: float,
+    latitude_start: float,
+    longitude_step: float,
+    latitude_step: float,
+    transformer,
+) -> list[dict[str, Any]]:
+    features = []
+    land_use_cycle = (
+        ("社区商业服务", "allowed"),
+        ("商业商务混合", "allowed"),
+        ("轨道交通站点综合开发", "review_required"),
+        ("居住配套商业", "allowed"),
+        ("公共绿地", "excluded"),
+    )
+    for row in range(5):
+        for column in range(5):
+            ordinal = row * 5 + column + 1
+            parcel_id = f"{prefix}{ordinal:02d}"
+            land_use_class, suitability = land_use_cycle[
+                (row * 2 + column) % len(land_use_cycle)
+            ]
+            area_hectares = round(0.045 + ((row + column) % 5) * 0.012, 3)
+            candidate = {
+                "parcel_id": parcel_id,
+                "longitude": round(longitude_start + column * longitude_step, 6),
+                "latitude": round(latitude_start + row * latitude_step, 6),
+                "area_hectares": area_hectares,
+                "scenario_profile": "retail_opportunity_cell",
+            }
+            feature = _candidate_feature(candidate, land_use_class, transformer)
+            feature["properties"] = {
+                "parcel_id": parcel_id,
+                "name": f"机会单元 {ordinal:02d}",
+                "land_use_class": land_use_class,
+                "suitability": suitability,
+                "area_hectares": area_hectares,
+            }
+            features.append(feature)
+    return features
 
 
 def _constraint_feature(feature_id, candidate, transformer) -> dict[str, Any]:

@@ -1,5 +1,28 @@
 # 学习进度
 
+## 2026-08-22 真实用地 Provider 与证据分级
+
+- 新增 OSM Overpass 商业/零售用地和商业建筑多边形 Provider；上海示例范围真实 smoke 返回 181 个边界内可解析要素。
+- 候选发现升级为“权威图层 -> 公开观察 -> 商业代理 -> 市场网格”，OSM 候选使用真实多边形质心和投影面积。
+- 新增 `authoritative/public_observation/synthetic/unspecified` 证据等级；OSM 只支持商业初筛，完整合规继续阻断。
+- 新增 Redis 用地范围缓存、共享代理、只读 smoke 脚本和权威空间文件导入脚本。
+- Bootstrap 对权威 PostGIS 图层执行来源、许可、字段、米制 CRS、Fixture 和元数据防伪校验。
+- Workbench 展示用地证据等级、来源、许可和缓存命中；Agent 手册新增第 36 节源码与设计说明。
+- 聚焦测试 `56 passed`；扩展回归 `574 passed`，3 个 MCP Client 用例因当前解释器缺少 `pywintypes` 未通过，与本阶段代码无关。
+
+## 候选位置自动发现
+
+- 咖啡店、便利店支持按 WGS84 范围发现候选。
+- 从带 Polygon 几何和用地属性的机会单元池筛选，不生成无法追溯的任意坐标。
+- 用地 `excluded` 在评分前硬过滤，缺失用地证据时关闭失败。
+- 每个 POI Profile 分组只做一次范围查询，本地计算候选邻域指标。
+- 支持最小间距去重、证据来源、截断/降级警告、Agent 计划与节点轨迹。
+- Workbench 发现后立即显示候选地图，人工确认后才进入正式异步分析。
+- 用地资料不足时支持商业用地代理和纯市场探索网格，两个降级层级均禁止提交正式分析。
+- 支持 `strict`、`commercial_land_proxy`、`market_exploration` 三种降级策略。
+- 候选发现新增独立范围 POI 背景层：查询全部 30 个审核类别、矩形裁剪、跨分组去重、类别筛选和来源/截断展示；评分证据保持不变。
+- Compose 默认 POI Provider 改为 `auto`，在线优先、Fixture 显式降级。
+
 ## 2026-08-03
 
 > 本次任务跨午夜完成，首次提交完成于 2026-08-04 00:01。
@@ -1152,3 +1175,172 @@
 - DOCX 来源表增加返回/可用、查询上限和截断说明，来源摘要保留数量边界。
 - 新增并扩展 DAG、失败路由、POI Adapter、来源契约、Evidence Review、Workbench 和报告测试；目标组合 `67 passed`。
 - 尚未实现自然语言 PlanningIntentAgent、项目长期记忆、ScenarioVersion 与主图内政策 RAG，后续按 Agent 主线继续推进。
+
+### 候选发现 POI 证据快照、正式分析复用与 Agent 手册完善
+
+- 复盘真实运行：候选发现从缓存 OSM 获得约 1039 条范围 POI，但正式分析首次 OSM 调用失败并打开熔断，后续 48 个评分组降级 Fixture，最终只有较少合成 POI；确认“上图多、下方少且很快”是两次取证漂移，不是地图漏画。
+- 新增 `CandidateDiscoveryPOISnapshot`，冻结候选发现的项目类型、候选集合、六个评分组、创建时间和内容 SHA-256；模型拒绝重复候选/评分组并设为只读。
+- Redis Runtime Store 新增快照保存、读取和 TTL 查询，默认 `7200` 秒，且不允许长于运行状态 TTL。
+- 候选发现服务在排序后保存快照，并返回 snapshot ID、SHA-256 与去重记录数；纯地图背景 POI 不进入评分快照。
+- Workbench 确认候选时把 `poi_evidence_snapshot_id` 加入业务命令；RQ 只传 ID，不复制上千条 POI 或任何凭据。
+- 同步分析与异步 Worker 都会校验项目类型、候选 ID、坐标和空间数据集，快照缺失/过期/错配时以 `409 analysis_blocked` 关闭失败。
+- 新增 `SnapshotReusingPOIGateway`，按正式候选、类别、半径和 limit 本地裁剪宽域证据，重算距离与指标；仅快照缺少的新评分组才允许调用后备 Provider。
+- `POISourceMeta` 新增 `evidence_snapshot_id/evidence_reused`；Run 顶层只有在工作流完成且最终结果确实含复用来源时才标记复用成功。
+- 保留上游截断语义：宽域证据不完整时，本地少量命中仍声明 `available_record_count > record_count`，Evidence Review 继续按下界处理。
+- 咖啡店和便利店正式 POI 查询上限均提升到 1000，不是只优化咖啡店；六个评分组保持不变。
+- 新增快照校验和、只读、裁剪、缺组降级、Redis TTL、候选发现持久化、同步/异步复用、API 409、Workbench 与 Compose 契约测试。
+- 定向回归 `83 passed`；配置 Windows `pywin32` DLL 搜索路径后，全量回归 `516 passed in 10.78s`。
+- 全面更新 `agent-implementation-guide.md`，补充项目价值、竞品差异、Agent 必要性、记忆/缓存分层、性能优化、核心代码机制、近期增量、面试追问和后续路线。
+- 同步更新 README、架构、候选发现、性能、数据字典和 Bad Case 文档；明确当前短期证据快照不等于自然语言会话记忆或项目长期记忆。
+- 当前仍未接入真实用地、客流、租金、人口与经营数据；快照解决一次决策内的数据一致性和效率，不提升上游数据本身的准确度或覆盖率。
+
+### Agent 框架 V2：Plan 驱动 LangGraph 编译
+
+- 新增通用 `compile_agent_plan_graph()`，把审核后的 `AgentExecutionPlan` 作为运行图结构唯一来源。
+- Plan 新增拓扑顺序约束；编译前严格校验计划节点与 Handler 一一对应，缺失 Handler 和计划外隐藏 Handler 均拒绝启动。
+- 根节点、串行依赖、并行分支、多依赖 fan-in 和终点均从 `depends_on` 自动生成，不再在 `parallel_workflow.py` 手写第二套拓扑。
+- 正式分析 LangGraph 的真实节点现与 Plan/Trace 完全一致：`intake`、`poi_evidence`、`spatial_evidence`、`policy_rules`、`merge_gate`、`review`。
+- 保留 POI/Spatial 原生并发、Policy 对 Spatial 的依赖、Merge 双分支 barrier，以及失败后的 failed/skipped 传播。
+- 新增拓扑顺序、图编译器和运行图一致性测试；框架定向测试 `13 passed in 1.27s`，完整回归 `521 passed in 10.14s`。
+- 更新 Agent 手册与架构文档，明确候选发现仍待迁移到同一编译器，上层 Supervisor、ScenarioVersion、ConstraintAgent 和长期记忆仍属后续能力。
+
+### 候选发现迁移到统一 Agent 图运行时
+
+- 新增 `CandidateDiscoveryGraphState` 与 `build_candidate_discovery_graph()`，五个发现节点全部由审核 Plan 编译为同名 LangGraph 节点。
+- `discovery_intake` 解析项目 Runtime/Profile；`land_use_gate` 与 `poi_market_evidence` 原生并行；`rank_diversify` 使用双依赖 barrier；`discovery_review` 保存快照并生成确认前报告。
+- `CandidateDiscoveryService` 不再手工创建顶层业务线程池，只负责向图传入请求并验证最终 `CandidateDiscoveryReport`。
+- 保留三级用地降级、范围 POI、评分、空间去重、快照 ID/SHA-256、Trace 顺序及 API 409/503 契约。
+- 新增运行节点与 Plan 一致性测试，并用线程屏障证明用地/POI 分支确实并发启动。
+- 候选发现/API/运行时/Workbench 组合定向回归 `26 passed in 3.72s`；完整回归 `523 passed in 11.65s`。
+- 下一阶段是 Supervisor Graph 与可恢复人工确认中断；ScenarioVersion、ConstraintAgent 和长期记忆仍未实现。
+
+### Supervisor Graph、可恢复候选确认与子图编排
+
+- 新增 `site-selection-supervisor-dag@2026.08-supervisor-v1`，统一编排候选发现、人工确认、正式分析和完成门禁。
+- Supervisor 与前两层子图共用 Plan 驱动编译器，五个真实运行节点与审核 Manifest 一一对应。
+- `candidate_confirmation` 使用 LangGraph `interrupt()`；未配置 Checkpointer 时拒绝构建，避免不可恢复的人工停点。
+- 新增 `SiteSelectionSupervisor.start()/confirm()` 会话门面，拒绝重复 session、未知 session 和错误生命周期恢复。
+- 人工确认在 `Command(resume=...)` 前校验候选白名单和用地门禁；非法选择不消费停点，可在同一 session 修正后重试。
+- 节点内保留第二次候选校验，防止未来其他调用入口绕过门面。
+- 正式分析通过应用 Adapter 复用候选发现的 POI 证据快照；发现只执行一次，确认后不重新加载整批在线 POI。
+- 修复 Checkpointer 序列化边界：候选发现图状态不再保存 `SiteSelectionRuntime` 或 Profile；Runtime、Gateway 和连接对象由节点按稳定业务 ID 重新解析。
+- 明确 `InMemorySaver` 仅用于测试；FastAPI/RQ/Workbench 与 Redis/Postgres 持久化 Checkpointer 尚未装配。
+- 新增 Supervisor 暂停/恢复、防篡改、同停点重试、快照复用、Plan 一致性和会话生命周期测试。
+- Supervisor/图编译/候选发现组合定向回归 `26 passed in 3.31s`；完整回归 `528 passed in 11.37s`。
+- 更新 Agent 手册、架构与候选发现文档，补充核心代码、检查点状态边界、记忆分层、性能影响、面试表达和生产化顺序。
+
+### Supervisor 持久化接入、并发确认与页面恢复
+
+- Supervisor Run 新增 `checkpoint_id`，`start/get/confirm` 统一从当前 StateSnapshot 构造响应。
+- `confirm` 要求 `expected_checkpoint_id`，陈旧页面或重复提交在恢复前返回版本冲突。
+- 新增 `RedisSupervisorSessionCoordinator`，管理 session TTL、`SET NX EX` 确认锁、token Lua 释放和审计事件。
+- 新增应用服务层，生成 session ID、使用服务端 UTC 确认时间、记录五类事件，并在租约过期访问时删除 checkpoint thread。
+- Compose API 装配官方 `langgraph-checkpoint-postgres`；启动时执行 `PostgresSaver.setup()`，初始化失败时关闭失败，不回退内存。
+- 新增 Supervisor start/get/confirm/events API，分别映射 404、业务阻断 409、版本/锁冲突 409、未配置 503 和脱敏 500。
+- Workbench 自动发现改走 Supervisor；session ID 写入 URL，可刷新或手工恢复。
+- 自动发现候选表改为勾选模式，ID、坐标、面积和空间数据集冻结；服务端只接受候选 ID 并从 checkpoint 恢复原始几何。
+- Supervisor 完成结果复用现有候选对比、地图、POI、Agent Trace 和证据视图；原 `/runs` 异步报告链继续服务其他入口。
+- 新增 Redis 协调器、持久化装配、API 生命周期、陈旧 checkpoint、审计事件、Workbench Client 和结果适配测试。
+- 组合定向回归 `33 passed in 4.11s`；全量回归 `536 passed in 12.92s`。
+- 因本机新增依赖下载审批返回 403，未执行真实 PostgresSaver Docker 构建和 API 重启恢复 Smoke；文档明确保留该验证边界。
+
+### Supervisor 两阶段重启 Smoke 契约与最终回归
+
+- 新增 `scripts/smoke_supervisor_runtime.py`，把验证拆成 `start` 与 `resume` 两阶段，允许在中间真实重启 API。
+- Start 阶段冻结 session、checkpoint 与候选 ID；Resume 阶段校验 checkpoint 不漂移、非法候选返回 409、合法确认完成正式分析。
+- Smoke 最终要求审计事件严格为 `started -> awaiting_confirmation -> confirmation_rejected -> confirmed -> completed`。
+- 新增脚本契约测试和启动失败补偿清理测试；Supervisor 持久化/API/Workbench/Smoke 组合定向回归 `36 passed in 3.93s`，完整回归 `539 passed in 11.93s`。
+- 当前环境仍未真实安装新增 PostgresSaver 依赖并重建容器；覆盖主仓库后需按交付说明执行真实两阶段 Smoke。
+
+### Supervisor 真实 Docker 重启恢复验证
+
+- Docker 冷构建成功安装 `langgraph-checkpoint-postgres 3.1.2`，API、Worker、MCP、Workbench、PostGIS、Redis 六服务全部健康。
+- Start 阶段创建 `supervisor-2c019a71-7365-4c2f-a4a9-7b9912d532fc` 并将状态写入 `artifacts/supervisor-smoke-state.json`。
+- 仅重启 API 后，Resume 阶段恢复同一 session 与 checkpoint，完成 2 个候选正式分析。
+- 审计事件链完整为 `started -> awaiting_confirmation -> confirmation_rejected -> confirmed -> completed`，共 5 段。
+- 基础单 API 实例跨进程恢复已验证；多 API 竞争、session 过期竞态、数据库故障切换、Janitor 和认证绑定仍是下一阶段。
+
+### Supervisor 与 RQ 的事件驱动异步边界
+
+- Supervisor Plan 升级为 `2026.08-supervisor-v2`，使用 `analysis_submitted -> analysis_wait -> analysis_completed` 替换同步正式分析节点。
+- 人工确认与分析完成分别由两个 LangGraph interrupt 表达；queued 只返回 `202 awaiting_analysis`，不会冒充 completed。
+- 复用现有 Redis RunState、RQ Queue、Worker、报告和解释链，没有创建第二套任务系统。
+- RunState 与 Queue payload 保存 `supervisor_session_id`；Supervisor checkpoint 保存 `analysis_run_id`，两套状态机通过稳定 ID 关联。
+- 新增共享 Supervisor service 工厂，FastAPI 与 Worker 使用同一 Plan、Handler 和 Checkpointer 装配，避免跨进程拓扑漂移。
+- Worker 在 completed/failed/cancelled/timed_out 后恢复 Supervisor；恢复失败不改写权威 RunState，后续 GET 以幂等 reconciliation 补偿。
+- Redis 确认锁升级为通用 transition lock，同时保护人工确认与分析终态恢复；重复 Worker/GET 完成不会重复推进或重复审计。
+- Supervisor 响应新增 `analysis_run_id`、`analysis_run_status` 和 `analysis_error_type`；成功审计链升级为七段，异常终态分别保留失败、取消和超时。
+- Workbench 确认后每 2 秒轮询 Supervisor，终态再读取原 RQ Run，因此自动发现路径也保留 LLM 解释、DOCX、Agent Trace 和报告下载；重复轮询不会重置候选编辑器。
+- Compose Worker 同步启用 Supervisor/PostgresSaver 的 session 与 lock 配置。
+- 更新 README、架构、候选发现、数据字典、性能、Bad Case 和 Agent 实现手册，补充核心代码、记忆/缓存分层、性能语义、项目价值与面试表达。
+- 聚焦回归 `40 passed in 3.92s`；补齐异常终态 API 幂等测试后，配置测试解释器的 pywin32 路径，全量回归 `548 passed in 12.50s`。
+- 本轮尚未覆盖到主仓库和重建 Docker；覆盖后需真实验证 Worker 驱动七段事件链以及 API/Worker 分别重启。
+
+### POI 在线恢复与 Workbench 证据口径修正
+
+- 真实会话复盘确认评分缓冲区快照 87 条、搜索边界内 15 条，且 7 个批次全部从 OSM 降级到 Fixture；不再把两个空间口径混为“POI 丢失”。
+- Overpass 新增单批最多 3 类的能力预算，候选发现按 Profile 评分组和背景小批次执行，避免一次超大多类别查询。
+- Fixture 降级结果不再写入在线 Redis 缓存；Provider cache token 进入作用域，上游恢复或配置升级后可获得新在线数据。
+- 新增 `SITE_SELECTION_POI_PROXY_URL` 与 `SITE_SELECTION_OVERPASS_MAX_CATEGORIES_PER_QUERY`，API/Worker Compose 配置一致。
+- 候选来源摘要新增可选 `fallback_reason`，新任务展示网络、限流或熔断原因，旧 Supervisor checkpoint 仍可恢复。
+- Workbench 分开显示边界内 POI、真实在线 POI、Fixture 批次和评分缓冲区 POI；详细警告折叠展示。
+- 场景确认上移到版本摘要后，候选确认上移到候选表与 POI 地图之间；地图候选使用短排名标签，避免长编号重叠。
+- Agent 实现手册新增故障链、缓存语义、容器代理、证据口径和交互门禁讲解。
+
+### 候选点 POI 自适应补采与侧栏使用引导
+
+- 复盘确认区域级宽域查询达到 Provider 上限时，边缘候选的局部 POI 稀疏不能直接解释为真实市场空白。
+- `SnapshotReusingPOIGateway` 改为完整组本地裁剪，截断、缺组或缺类别时按候选中心、Profile 半径、类别和 limit 补查。
+- 补查继续复用运行时 Redis 缓存、限流、超时、重试/熔断、PostGIS 持久化和 Fixture 显式降级，不建立第二套 Provider。
+- 补查失败且已有局部快照时保留不完整证据并记录错误；完全缺组且补查失败时关闭失败。
+- `POISourceMeta` 新增补查状态、原因和错误字段，区分快照复用与候选点新查询，并兼容旧来源 JSON 和旧快照摘要。
+- Workbench 标题下提示左上角 `»` 可展开项目类型、候选来源与发现范围设置；正式分析前说明补查规则。
+- 正式结果 POI 页签展示补查批次数、失败警告和逐候选/评分组来源明细。
+- README、架构、性能、Bad Case、数据字典、Fixture 边界、候选发现文档和 Agent 实现手册同步更新。
+- 新增完整/截断/缺组/缺类别/失败回退/旧摘要兼容和 Run 级补查测试；全量回归 `566 passed in 13.01s`。
+- 独立 Workbench 在 1280×720 与 390×844 视口验证设置提示，无 Traceback 和横向溢出。
+
+### 候选发现 POI 分区修复与可信第一次排名
+
+- 复盘真实 Supervisor 会话：1,648 条评分快照和 652 条边界内真实 POI 仍掩盖严重类别失衡；交通、办公、居住和停留环境降级 Fixture，互补商业返回 1,000/1,260 条且截断，候选局部多组为零。
+- 在 `poi_market_evidence` 内增加完整性驱动的 2x2 分区修复；触发条件为在线降级、截断或缺少 Profile 类别，覆盖整个候选范围而不是只补当前前 8 名。
+- 分区结果只接受真实在线来源，按 POI ID 合并去重并重算宽域距离；部分成功继续标记不完整，全部失败保留原降级证据和异常摘要。
+- 修复后的六组证据用于第一次评分、范围地图和 Redis 快照；正式分析的候选点按需补采仍保留，形成候选池公平修复与局部精查两层策略。
+- `CandidateDiscoverySource/Report` 新增完整性、补查请求/成功、新增记录和剩余缺口字段；Workbench 增加四项修复指标和逐组来源审计。
+- Compose 与 Provider 默认连续失败阈值从 1 调整为 6，避免单个宽域失败立即阻断其余五个评分组；补查每组固定 4 请求并进入同一个最多 4 Worker 的交错队列，继续使用共享限速、缓存和熔断。
+- 用地门禁不变：市场探索即使 POI 修复成功仍保持 `formal_analysis_allowed=false`。
+- 专项回归 `42 passed`，全量回归 `573 passed in 13.80s`；Workbench 在 1280×720 和 390×844 下无横向溢出或控制台错误。
+
+### 候选发现超时修复与全局补查调度
+
+- 复现 Workbench “选址 API 调用超时”：六个评分组原先逐组执行 2x2 补查，单请求 8 秒边界下理论等待可超过默认 90 秒客户端超时。
+- 把全部不完整组的最多 24 个查询汇总到一个全局 4 Worker 执行器，并按分区与评分组交错，避免慢组独占队列；查询预算、真实来源过滤、评分和用地门禁不变。
+- Provider 的 2 次/秒共享限速、Redis 缓存、熔断和单请求超时继续生效；提高 Worker 数不等于放宽上游请求速率。
+- Workbench 仅为 Supervisor start 提供至少 150 秒的有界客户端保护，其他 API 默认仍为 90 秒；Spinner 与超时错误明确说明首次在线补查可能等待及缓存复用语义。
+- 新增跨评分组单批次交错、请求级超时和专用错误信息测试；候选发现与 Workbench 定向回归 `32 passed in 3.30s`，全量回归 `576 passed in 18.56s`。
+
+### 任意区域市场探索与显式全流程演示
+
+- 复盘新 Supervisor 会话：徐汇区 4 km 范围加载 4,995 条边界 POI、冻结 6,304 条评分快照，候选发现耗时 32.65 秒；阻断原因不是 POI 太少，而是范围与内置咖啡店机会单元完全不相交，策略按设计降级为 `market_exploration`。
+- 保留用地硬门禁，不允许把 `MARKET-*` 网格或 POI 热点自动冒充可用地块。
+- `FixtureCandidateCatalog` 新增零售演示范围推导，从版本化候选中心加固定边距，不在 Workbench 散落两套坐标常量。
+- Workbench 的发现范围和用地阻断结果区新增显式演示入口；用户主动触发后使用 `strict` 模式创建新 Supervisor session，旧会话保持不可变。
+- 命中演示机会单元时页面展示数据集 ID 与合成用地警告，说明只验证候选发现、人工确认、GIS/规则、异步分析和报告链，不代表真实许可。
+- 真实 API 验证咖啡店演示范围返回 `registered_land`、8 个候选、评估 20 个机会单元、用地排除 5 个，数据集 `demo-coffee-discovery-pool@fixture-rich-v1`，`formal_analysis_allowed=true`，发现耗时 33.79 秒。
+- 目录、候选发现和 Workbench 组合回归 `38 passed in 3.05s`，全量回归 `577 passed in 13.86s`；独立页面验证就地入口、新 session、合成警告和正式分析按钮启用，`390×844` 手机视口无横向溢出。
+- 浏览器日志发现并修复 Streamlit Widget 默认值与演示回调 Session State 的双重所有权告警；候选来源、数量和间距改为仅在 key 缺失时初始化。
+- 状态所有权修复后组合回归 `38 passed in 3.15s`，全量回归 `577 passed in 14.62s`。
+- Workbench 中 26 处已弃用的 `use_container_width=True` 统一迁移为 `width="stretch"`，源码测试防止旧参数回归。
+- 最终全量回归 `577 passed in 13.93s`；页面重载后终端无 Session State 或 `use_container_width` 警告。
+
+### 商业选址与用地合规双分析范围
+
+- 修正 `formal_analysis_allowed` 同时阻断商业分析和合规结论的过粗门禁；字段继续表示完整 GIS/政策合规能力，不再控制全部零售分析。
+- 新增 `AnalysisScope.MARKET_SELECTION/FULL_COMPLIANCE`，并贯穿 ProjectRequest、API/RQ 命令、RunState、Worker 结果、响应和报告。
+- Supervisor 对无可核验用地的咖啡店/便利店候选自动选择市场分析；候选白名单、checkpoint、快照一致性和非零售用地门禁保持不变。
+- 市场分支继续按候选和 Profile 半径复用 POI 快照、补采缺失类别、执行版本化 POI 评分和排名；GIS 与政策节点显式记录 `skipped`，证据状态为 `NOT_RUN`。
+- Evidence Review 新增 `land_compliance_unverified` warning；POI 缺失仍为 blocker，不因市场 Scope 放松证据完整性。
+- Workbench 启用“确认候选并运行商业选址分析”，原红色阻断改为待核验警告；演示用地入口移入开发选项。
+- DOCX 市场报告使用独立标题、分析范围元数据和待核验 GIS/政策段落，不把空规则结果写成“未命中即合规”。
+- 更新 README、架构、候选发现、零售能力、数据字典、Bad Case 与 Agent 实现手册，记录核心代码、缓存/快照、性能和面试表达。
+- 本轮工作流、Supervisor、API、报告和 Workbench 组合回归 `74 passed`；本机扩展回归 `573 passed, 4 deselected`，未执行项均依赖当前测试解释器缺少的 Windows `pywintypes`。

@@ -10,7 +10,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from .evidence import AgentState, AnalysisResult, AnalysisStatus
+from .domain import AnalysisScope
+from .evidence import AgentState, AnalysisResult, AnalysisStatus, EvidenceStatus
 class ReportGenerationBlockedError(RuntimeError):
     """Raised when an auditable report cannot be generated from the state."""
 
@@ -33,7 +34,7 @@ def generate_site_selection_report(
     document = Document()
     _configure_document(document)
     _add_title_block(document, state)
-    _add_disclaimer(document)
+    _add_disclaimer(document, state)
     _add_summary(document, state)
     _add_comparison(document, state)
     for result in state.results:
@@ -100,7 +101,12 @@ def _add_title_block(document: DocumentType, state: AgentState) -> None:
     title = document.add_paragraph()
     title.paragraph_format.space_before = Pt(12)
     title.paragraph_format.space_after = Pt(4)
-    _add_run(title, "选址预审证据报告", 23, RGBColor(0, 0, 0), bold=True)
+    report_title = (
+        "商业选址分析报告"
+        if state.request.analysis_scope is AnalysisScope.MARKET_SELECTION
+        else "选址预审证据报告"
+    )
+    _add_run(title, report_title, 23, RGBColor(0, 0, 0), bold=True)
 
     subtitle = document.add_paragraph()
     subtitle.paragraph_format.space_after = Pt(14)
@@ -113,6 +119,7 @@ def _add_title_block(document: DocumentType, state: AgentState) -> None:
     metadata = [
         ("请求时间", state.request.requested_at.isoformat()),
         ("候选地块", str(len(state.request.candidate_parcels))),
+        ("分析范围", state.request.analysis_scope.value),
         ("分析状态", state.status.value),
         ("证据审查", state.evidence_review_report.status.value),
     ]
@@ -123,15 +130,25 @@ def _add_title_block(document: DocumentType, state: AgentState) -> None:
         _add_run(paragraph, value, 11, RGBColor(0, 0, 0))
 
 
-def _add_disclaimer(document: DocumentType) -> None:
+def _add_disclaimer(document: DocumentType, state: AgentState) -> None:
     paragraph = document.add_paragraph()
     paragraph.paragraph_format.space_before = Pt(12)
     paragraph.paragraph_format.space_after = Pt(10)
     _shade_paragraph(paragraph, "F4F6F9")
     _add_run(paragraph, "使用边界: ", 10.5, _DARK_BLUE, bold=True)
+    boundary = (
+        "本报告仅完成 POI、交通、需求代理、竞品和候选排名等商业选址分析；"
+        "未取得可核验用地数据，用地、规划和政策合规状态均为待核验，"
+        "不构成合规结论、行政审批意见或选址推荐。"
+        if state.request.analysis_scope is AnalysisScope.MARKET_SELECTION
+        else (
+            "本报告用于展示数据、规则命中、软评分和证据血缘，不构成整体"
+            "合规结论、行政审批意见或选址推荐。未命中当前规则不等于整体合规。"
+        )
+    )
     _add_run(
         paragraph,
-        "本报告用于展示数据、规则命中、软评分和证据血缘，不构成整体合规结论、行政审批意见或选址推荐。未命中当前规则不等于整体合规。",
+        boundary,
         10.5,
         RGBColor(0, 0, 0),
     )
@@ -156,6 +173,11 @@ def _add_comparison(document: DocumentType, state: AgentState) -> None:
     rows = []
     for item in state.comparison_report.candidates:
         outcomes = ", ".join(outcome.value for outcome in item.policy_outcomes)
+        if (
+            state.request.analysis_scope is AnalysisScope.MARKET_SELECTION
+            and not outcomes
+        ):
+            outcomes = "待核验"
         rows.append(
             [
                 item.parcel_id,
@@ -196,11 +218,13 @@ def _add_candidate_section(
         [metric, f"{value:.6g}"]
         for metric, value in sorted(result.gis_evidence.metrics.items())
     ]
+    if not gis_rows and result.gis_evidence.status is EvidenceStatus.NOT_RUN:
+        gis_rows = [["用地与空间合规", "待核验"]]
     _add_table(document, ["指标", "数值"], gis_rows, [2700, 6660])
     _add_table_note(
         document,
-        "数据集: " + ", ".join(result.gis_evidence.dataset_ids)
-        + f" | CRS: {result.gis_evidence.crs}",
+        "数据集: " + (", ".join(result.gis_evidence.dataset_ids) or "未接入")
+        + f" | CRS: {result.gis_evidence.crs or '未核验'}",
     )
 
     document.add_heading("3.2 POI 评分证据", level=2)
@@ -336,6 +360,11 @@ def _add_candidate_section(
             policy_rows,
             [2400, 1700, 2360, 2900],
         )
+    elif result.policy_evidence.status is EvidenceStatus.NOT_RUN:
+        paragraph = document.add_paragraph(
+            "当前为商业选址分析，政策与用地合规规则未执行，状态为待核验。"
+        )
+        paragraph.paragraph_format.space_after = Pt(6)
     else:
         paragraph = document.add_paragraph(
             "当前已评估规则未命中；该事实不等于整体合规。"

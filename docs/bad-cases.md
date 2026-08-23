@@ -20,6 +20,39 @@
 | `POIF-004` | 熔断期间重复调用 | 不再访问上游 | `POICircuitOpenError` |
 | `RAG-003` | 行政区没有适用语料 | 返回空结果 | 不跨行政区拼接政策 |
 | `RUN-004` | Manifest 存在但底层图层缺失 | 全链路失败、结果为空 | 分支错误汇总后 fail-closed |
+| `LLM-001` | 证据解释接口无法连接 | 分析保持 completed，解释显式 failed | 15 秒单次超时、默认零重试、错误脱敏 |
+| `POIS-001` | 候选发现地图使用缓存 OSM，正式分析再次联网失败并降级 Fixture | 发现与分析必须使用同一评分证据 | Redis 证据快照 + 本地裁剪 + 来源复用标记 |
+| `POIS-002` | 用户提交已经过期的快照 ID | 阻断并要求重新发现 | API `409 analysis_blocked`，不静默重新联网 |
+| `POIS-003` | 候选 ID、坐标或空间数据集与快照不一致 | 阻断 | `validate_snapshot_selection()` |
+| `POIS-004` | 宽域快照已被 Provider 截断，边缘候选局部只命中少量记录 | 按候选点服务半径补查 | 成功记录补查来源；失败保留不完整快照和 Review 警告 |
+| `POIS-005` | 候选点补查失败，但快照仍有局部记录 | 保留局部证据，不伪装完整 | `evidence_supplement_error` + `is_truncated=true` |
+| `POIS-006` | 快照完全缺组且候选点补查失败 | 正式分析失败关闭 | 不生成空证据或虚构评分 |
+| `POIS-007` | 六个宽域评分组中部分在线失败或截断，第一次排名被少数高密类别主导 | 在首次排名前公平修复整个候选池 | 不完整组执行 2x2 分区补查，只合并真实记录并披露剩余缺口 |
+| `POIS-008` | 多个不完整评分组逐组补查，Supervisor 启动超过 Workbench 90 秒超时 | 全局有界并行并保留明确超时反馈 | 24 查询上界 + 4 Worker 交错队列 + Supervisor 专用 150 秒保护线 |
+| `POIS-009` | 合成/在线降级快照被误判为“可直接复用”，候选局部分析继续使用少量 Fixture | 合成证据必须尝试真实候选点补查 | 只有真实 Provider 响应算成功；Fixture 再降级记录失败并保留原快照切片 |
+| `POIS-010` | 同一评分组中部分候选是真实 OSM、部分候选是 Fixture 或补查失败，却直接比较数量和排名 | 明确标记该 cohort 不可横向比较 | 候选覆盖表 + 评分组可比性表 + `poi_candidate_cohort_inconsistent` Review 警告 |
+| `POIS-011` | 正式分析把最多 24 个候选局部补查串行执行，最坏等待超过 RQ 180 秒预算 | 缩短等待但保持查询和评分契约不变 | 最多 4 路有界任务并发 + `executor.map` 稳定顺序 + Provider 全局 1 QPS |
+| `LAND-001` | 用户选择的真实区域没有落入内置用地机会单元，旧页面把整个分析按钮禁用 | 继续商业选址分析，只把用地合规标记为待核验 | `market_selection` 路由；POI 分析完成，GIS/政策为 `skipped/not_run` |
+| `LAND-002` | 为了跑通链路把 POI 热点或市场网格自动冒充商业地块 | 禁止生成虚假合规证据 | `full_compliance` 仍要求版本化 Polygon 与数据集血缘；演示用地必须显式选择并标记合成 |
+| `LAND-003` | 把 OSM 商业用地或商业建筑解释为法定用途/权属依据 | 公开实况不等于权威证据 | 固定 `public_observation` 等级，只运行商业分析，完整合规继续阻断 |
+| `LAND-004` | Overpass 超时后缓存空结果，后续区域长期退化为网格 | 失败不污染真实数据缓存 | 只缓存成功且结构有效的响应，失败记录类型并按 fallback mode 降级 |
+| `LAND-005` | 手工图层改名后被当成权威用地 | PostGIS 存储位置不代表证据资格 | 导入和启动双重校验来源、许可、版本、字段、米制 CRS、Fixture 和 evidence level |
+| `SUP-001` | 用户确认发现报告之外的候选 ID | 分析前拒绝，原停点仍可重试 | 入口白名单 + 节点二次门禁 |
+| `SUP-002` | 浏览器旧页面用陈旧 checkpoint 再次确认 | 返回 409，要求刷新 | `expected_checkpoint_id` 乐观并发检查 |
+| `SUP-003` | 两个请求同时确认同一 session | 最多一个进入恢复临界区 | Redis `SET NX EX` 锁 + token Lua 释放 |
+| `SUP-004` | 把 Runtime、Gateway 或连接放入 checkpoint | 构建状态时排除 | checkpoint 只保存可序列化业务数据和 ID |
+| `SUP-005` | Redis session 租约已过期 | 返回 404，不恢复旧业务状态 | TTL guard，并在访问时 `delete_thread()` |
+| `SUP-006` | 确认后把 queued Run 当成 Supervisor completed | 返回 `202 awaiting_analysis` | `analysis_submitted -> analysis_wait -> analysis_completed` 双阶段契约 |
+| `SUP-007` | Queue 已传 `supervisor_session_id`，Worker 函数不接收导致 RQ TypeError | Worker 显式接收并核对关联 ID | Queue payload、RunState details 和 Worker 三处契约测试 |
+| `SUP-008` | Worker 已完成 Run，但恢复 Postgres checkpoint 暂时失败 | 保留权威 Run 终态，GET 后续补偿 | Worker 恢复失败不回写 Run；GET 幂等 reconciliation |
+| `SUP-009` | Worker 与 GET 同时恢复分析完成 | 最多推进一次、事件不重复 | 通用 Redis transition lock + 相同 Run ID 幂等完成 |
+| `SUP-010` | RQ 强制终止 Worker 后失败回调未写回，Run 长时间停留在 `running` | 在有限宽限后得到明确超时终态 | RQ 180 秒主预算 + 失败回调 + GET 在额外 30 秒后原子写入 `StaleWorkerTimeout` |
+| `SCN-001` | 用户只说“帮我选址”，没有业态或区域 | 不猜测关键字段 | `needs_clarification`，不生成零售发现请求 |
+| `SCN-002` | 用户要求 9 公里半径，生成范围超过安全上限 | 阻断确认 | 半径最大 7 公里 + `DiscoveryBounds` 20 公里对角线双重校验 |
+| `SCN-003` | 在线区域解析失败且离线目录无匹配 | 不伪造坐标 | 返回区域冲突，要求补充城市/区县或配置 Provider |
+| `SCN-004` | 用户提出租金、真实客流约束但没有正式数据 | 保存需求但不得假装已执行 | `missing_data`，不进入候选过滤和评分 |
+| `SCN-005` | 用户确认旧的 pending version | 拒绝陈旧确认 | `version_id` 与当前 pending 版本比较，返回 409 |
+| `SCN-006` | 把离线区域目录当作权威行政边界 | 明确披露演示来源 | `fixture_catalog`、置信度和复核 warning |
 
 ## 2. 人工复核边界
 
@@ -40,7 +73,23 @@
 
 ### 在线 Provider 不稳定
 
-高德和 Overpass 仍可能发生授权失效、配额耗尽、延迟尖峰、返回结构变化和区域覆盖差异。当前重试/熔断只解决可用性，不保证数据正确性。生产环境应增加 Provider 指标、告警、预算控制和抽检。
+高德和 Overpass 仍可能发生授权失效、配额耗尽、延迟尖峰、返回结构变化和区域覆盖差异。当前重试/熔断只解决可用性，不保证数据正确性。当前默认值是单次尝试 15 秒、每组最多 2 次尝试、全局 1 QPS、连续失败阈值 12、退避 2 到 8 秒；持续故障仍会熔断。发现阶段只对降级、截断或缺类别组执行固定 2x2 分区补查，部分成功仍标记不完整。全部修复查询共享最多 4 Worker 的交错队列和同一 Provider 限速器，Supervisor 启动使用 150 秒有限保护；公共上游仍可能超过该边界，生产环境应增加 Provider 指标、告警、预算控制、覆盖率抽检和多源交叉验证。
+
+### 候选发现与正式分析证据漂移
+
+历史现象是范围地图能看到约千条缓存 OSM POI，但正式分析第一次重新联网失败后触发熔断，其余 48 个候选评分组快速降级 Fixture，导致下方证据明显更少且运行异常快。根因是发现与分析分别获取数据，不是 UI 漏画。
+
+当前控制是候选发现冻结六个评分组，正式分析先通过快照 ID 本地裁剪；若宽域结果被截断、缺组、缺类别、使用合成来源或发生在线降级，则使用候选中心、Profile 类别、服务半径和 limit 执行有界补查。只有真实响应能替换或补充证据；Fixture 再降级不覆盖可用切片。每条来源披露快照复用、候选点补查、触发原因和失败原因。候选级覆盖诊断和评分组 cohort 诊断进一步区分“真实密度少”和“证据不可比”；cohort 不完整时软评分仍可探索，但必须警告人工复核，不能把数量差异直接解释为商业差异。快照默认只保留两小时，过期或候选错配时 fail-closed。剩余风险包括 Redis 内存、公共 Provider 限额、补查延迟和单源系统性缺失；生产前应增加快照大小配额、压缩、复用/补查率、fallback 率和 Provider 覆盖抽检。
+
+### 正式补查超时与僵死 Run
+
+历史故障中，候选发现耗时约 146.62 秒并冻结 7,205 条评分 POI；确认后正式 Run 只记录 `created -> enqueued -> started`，超过 14 分钟仍为 `running`。根因是最多 24 个可能触发 `2 x 15s` 尝试和退避的候选补查被串行执行，超过 RQ 180 秒预算；Worker 被强制终止时，失败回调没有可靠地把业务 RunState 写入终态。
+
+当前数据面使用最多 4 路有界并发，保持输入输出顺序并继续服从全局 1 QPS。控制面以 RQ 失败回调作为第一终态路径，并由 `GET /runs/{run_id}` 在任务年龄超过 `180 + 30` 秒时把陈旧 `running` 原子收敛为 `timed_out`。迟到 Worker 不能覆盖已有终态，Supervisor GET 再幂等恢复会话。剩余风险是单 Worker 吞吐、队列积压和公共 Provider 尾延迟；需要对任务年龄、超时率、陈旧状态收敛次数和恢复延迟建立监控，而不是继续无上限延长超时。
+
+### LLM 解释不可用
+
+LLM 只负责在确定性分析完成后复述证据。接口断网、鉴权失败或模型超时时，解释会标记为 `failed`，不会改写评分、排序、规则结果或报告。运行时默认单次最多等待 15 秒且不自动重试，避免可选说明拖住整个任务；生产环境仍应增加独立的解释任务、供应商可用率指标和按需重试入口。
 
 ### 坐标转换误差
 
@@ -56,7 +105,11 @@ GCJ-02 到 WGS84 的迭代转换适用于工程接入，但不能替代测绘级
 
 ### 队列与 Worker 高可用尚未验证
 
-`POST /runs` 已使用 RQ 与独立 Worker，覆盖幂等入队、取消、任务超时和失败回调，但当前 Compose 仍只有一个 Worker 和一个 Redis。尚未验证 Worker 横向扩容、Redis 故障转移、长时间断电恢复、失败队列重放和滚动发布兼容性。生产部署还需要队列积压、任务年龄、失败率、Worker 心跳和 Redis 持久化告警。
+`POST /runs` 已使用 RQ 与独立 Worker，覆盖幂等入队、取消、任务超时、失败回调和陈旧 `running` 状态收敛，但当前 Compose 仍只有一个 Worker 和一个 Redis。尚未验证 Worker 横向扩容、Redis 故障转移、长时间断电恢复、失败队列重放和滚动发布兼容性。生产部署还需要队列积压、任务年龄、失败率、`StaleWorkerTimeout`、Worker 心跳和 Redis 持久化告警。
+
+### Supervisor 持久化仍缺多实例与故障恢复验证
+
+代码已使用官方 PostgresSaver 装配 checkpoint，并用 Redis 管理租约、通用状态转换锁、RunState 和审计；API 重启后同一 session 已成功恢复，基础单实例恢复不再是缺口。本轮已在测试床完成 Worker 终态恢复和 GET 对账，但尚未覆盖到主仓库重跑真实 Docker 七段链。Redis 租约过期仍只会在后续访问时删除对应 thread，尚无后台 Janitor。生产前还需验证多 API/Worker 竞争、数据库断连、锁超时、服务滚动升级、checkpoint 加密和认证身份绑定。
 
 ### 取消不是事务回滚
 

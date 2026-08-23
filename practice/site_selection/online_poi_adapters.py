@@ -184,6 +184,10 @@ class RetryingCircuitBreakerPOIAdapter:
         )
 
     @property
+    def max_categories_per_query(self) -> int | None:
+        return _max_categories_per_query(self._primary)
+
+    @property
     def circuit_open(self) -> bool:
         with self._lock:
             return self._monotonic() < self._open_until
@@ -253,6 +257,10 @@ class CachedPOIAdapter:
         )
         return f"cached:{self._cache_scope}:{delegate_token}"
 
+    @property
+    def max_categories_per_query(self) -> int | None:
+        return _max_categories_per_query(self._delegate)
+
     def search(self, query: POIQuery) -> POIFeatureSet:
         cached = self._cache.get_cached_poi(
             query,
@@ -261,15 +269,24 @@ class CachedPOIAdapter:
         if cached is not None:
             return cached.model_copy(
                 deep=True,
-                update={"query": query.model_copy(deep=True)},
+                update={
+                    "query": query.model_copy(deep=True),
+                    "source": cached.source.model_copy(
+                        deep=True,
+                        update={"cache_hit": True},
+                    ),
+                },
             )
         result = self._delegate.search(query)
         if result.query != query:
             raise ValueError("POI delegate 返回了与请求不一致的查询")
-        self._cache.save_cached_poi(
-            result,
-            cache_scope=self._cache_scope,
-        )
+        # A fallback is a temporary availability result, not a durable answer
+        # for the online cache key. Caching it would suppress upstream recovery.
+        if result.source.fallback_from is None:
+            self._cache.save_cached_poi(
+                result,
+                cache_scope=self._cache_scope,
+            )
         return result
 
 
@@ -294,6 +311,10 @@ class PersistingPOIAdapter:
             type(self._delegate).__name__,
         )
         return f"persisted:{delegate_token}"
+
+    @property
+    def max_categories_per_query(self) -> int | None:
+        return _max_categories_per_query(self._delegate)
 
     def search(self, query: POIQuery) -> POIFeatureSet:
         result = self._delegate.search(query)
@@ -385,6 +406,8 @@ class AmapPOIAdapter:
         *,
         rate_limiter: RequestRateLimiter | None = None,
         page_size: int = 25,
+        max_pages_per_search: int | None = None,
+        max_categories_per_query: int = 3,
         timeout_seconds: float = 5,
         cache_version: str = "amap-v3",
         category_aliases: Mapping[str, str] | None = None,
@@ -396,6 +419,10 @@ class AmapPOIAdapter:
             raise ValueError("高德 POI Adapter 必须配置 HTTP Client 和坐标转换器")
         if page_size <= 0 or page_size > 25:
             raise ValueError("高德 POI 分页大小必须在 1 到 25 之间")
+        if max_pages_per_search is not None and max_pages_per_search <= 0:
+            raise ValueError("高德 POI 单次查询页数预算必须大于 0")
+        if max_categories_per_query <= 0:
+            raise ValueError("高德 POI 单次查询类别预算必须大于 0")
         if timeout_seconds <= 0:
             raise ValueError("高德 POI 超时必须大于 0")
         if not cache_version.strip():
@@ -405,6 +432,8 @@ class AmapPOIAdapter:
         self._transformer = coordinate_transformer
         self._rate_limiter = rate_limiter or NoopRateLimiter()
         self._page_size = page_size
+        self._max_pages_per_search = max_pages_per_search
+        self._max_categories_per_query = max_categories_per_query
         self._timeout_seconds = timeout_seconds
         self._cache_version = cache_version.strip()
         self._category_aliases = dict(category_aliases or {})
@@ -412,7 +441,15 @@ class AmapPOIAdapter:
 
     @property
     def cache_token(self) -> str:
-        return f"amap:{self._cache_version}"
+        page_budget = self._max_pages_per_search or "unbounded"
+        return (
+            f"amap:{self._cache_version}:pages={page_budget}:"
+            f"categories={self._max_categories_per_query}"
+        )
+
+    @property
+    def max_categories_per_query(self) -> int:
+        return self._max_categories_per_query
 
     def search(self, query: POIQuery) -> POIFeatureSet:
         center_longitude, center_latitude = self._transformer.wgs84_to_gcj02(
@@ -421,7 +458,11 @@ class AmapPOIAdapter:
         )
         records_by_id: dict[str, POIRecord] = {}
         provider_record_count: int | None = None
-        max_pages = math.ceil(query.limit / self._page_size)
+        requested_pages = math.ceil(query.limit / self._page_size)
+        max_pages = requested_pages
+        if self._max_pages_per_search is not None:
+            max_pages = min(max_pages, self._max_pages_per_search)
+        last_page_size = 0
         for page in range(1, max_pages + 1):
             self._rate_limiter.acquire()
             payload = self._request_page(
@@ -445,6 +486,7 @@ class AmapPOIAdapter:
             pois = payload.get("pois")
             if not isinstance(pois, list):
                 raise POIResponseError("高德 POI 响应缺少 pois 列表")
+            last_page_size = len(pois)
             if not pois:
                 break
             for raw in pois:
@@ -459,9 +501,14 @@ class AmapPOIAdapter:
             records_by_id.values(),
             key=lambda item: (item.distance_m or 0, item.poi_id),
         )[: query.limit]
+        page_budget_exhausted = (
+            max_pages < requested_pages
+            and last_page_size >= self._page_size
+            and len(records_by_id) < query.limit
+        )
         available_record_count = max(
             provider_record_count or 0,
-            len(records_by_id),
+            len(records_by_id) + int(page_budget_exhausted),
         )
         source = POISourceMeta(
             provider=POIProvider.AMAP,
@@ -587,6 +634,7 @@ class OverpassPOIAdapter:
         endpoint: str = "https://overpass-api.de/api/interpreter",
         rate_limiter: RequestRateLimiter | None = None,
         timeout_seconds: float = 15,
+        max_categories_per_query: int = 3,
         cache_version: str = "overpass-live-v1",
         clock: Callable[[], datetime] | None = None,
     ) -> None:
@@ -598,6 +646,8 @@ class OverpassPOIAdapter:
             raise ValueError("Overpass endpoint 必须使用 HTTPS")
         if timeout_seconds <= 0:
             raise ValueError("Overpass POI 超时必须大于 0")
+        if max_categories_per_query <= 0:
+            raise ValueError("Overpass 单次查询类别预算必须大于 0")
         if not cache_version.strip():
             raise ValueError("Overpass cache_version 不能为空")
         self._http_client = http_client
@@ -611,12 +661,20 @@ class OverpassPOIAdapter:
         self._endpoint = endpoint
         self._rate_limiter = rate_limiter or NoopRateLimiter()
         self._timeout_seconds = timeout_seconds
+        self._max_categories_per_query = max_categories_per_query
         self._cache_version = cache_version.strip()
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     @property
     def cache_token(self) -> str:
-        return f"overpass:{self._cache_version}"
+        return (
+            f"overpass:{self._cache_version}:"
+            f"categories={self._max_categories_per_query}"
+        )
+
+    @property
+    def max_categories_per_query(self) -> int:
+        return self._max_categories_per_query
 
     def search(self, query: POIQuery) -> POIFeatureSet:
         missing = sorted(set(query.categories) - self._category_filters.keys())
@@ -759,6 +817,10 @@ class FallbackPOIAdapter:
         fallback = getattr(self._fallback, "cache_token", type(self._fallback).__name__)
         return f"fallback:{primary}:{fallback}"
 
+    @property
+    def max_categories_per_query(self) -> int | None:
+        return _max_categories_per_query(self._primary)
+
     def search(self, query: POIQuery) -> POIFeatureSet:
         try:
             return self._primary.search(query)
@@ -782,6 +844,15 @@ def _provider_of(adapter: POISourceAdapter) -> POIProvider:
     if isinstance(adapter, OverpassPOIAdapter):
         return POIProvider.OSM
     raise ValueError("无法确定 primary POI Adapter 的 provider")
+
+
+def _max_categories_per_query(adapter: POISourceAdapter) -> int | None:
+    value = getattr(adapter, "max_categories_per_query", None)
+    if value is None:
+        return None
+    if not isinstance(value, int) or value <= 0:
+        raise ValueError("POI Adapter 类别预算必须是正整数")
+    return value
 
 
 def _response_json(response: HTTPResponse, *, provider: str) -> dict[str, Any]:

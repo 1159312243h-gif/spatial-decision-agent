@@ -124,6 +124,8 @@ def test_retail_queries_follow_store_specific_profiles() -> None:
         for query in convenience_queries
         if query.group_key == "convenience_competition"
     ).categories == ["便利店", "超市"]
+    assert {query.limit for query in coffee_queries} == {1_000}
+    assert {query.limit for query in convenience_queries} == {1_000}
 
 
 def test_each_parcel_gets_every_profile_query_group() -> None:

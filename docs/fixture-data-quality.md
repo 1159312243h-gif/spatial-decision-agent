@@ -36,6 +36,8 @@
 5. GIS 分支读取对应候选多边形和约束图层，计算面积、相交与最近距离。
 6. 比较报告并列显示所有候选，不把最高软评分表述为自动推荐。
 
+自动发现的全流程演示不会把任意真实区域平移到 Fixture。`FixtureCandidateCatalog.demo_discovery_bounds_for()` 只为咖啡店和便利店计算显式演示范围，Workbench 必须由用户主动触发，并提交 `fallback_mode=strict`。后端响应仍记录 `demo-coffee-discovery-pool` 或 `demo-convenience-discovery-pool`、`fixture-rich-v1`、用地适配状态和排除数量。页面同时显示合成用地警告，保证“能完整演示”不等于“获得真实规划许可”。
+
 ## 防止“看起来很多但仍然不可信”
 
 数量增加不能自动产生真实可信度，因此系统强制暴露以下信息：
@@ -54,7 +56,9 @@ Workbench 和 DOCX 报告都会展示这些字段。测试还要求 24 个候选
 
 ## 在线自动加载
 
-`SITE_SELECTION_POI_PROVIDER` 支持 `fixture`、`auto`、`amap` 和 `overpass`。`auto` 在存在 `AMAP_API_KEY` 时选择高德，否则选择 Overpass。在线响应统一转成 WGS84 `POIRecord`，写入 Redis 查询缓存，并按 `source + source_id` 去重入库 PostGIS。上游临时不可用时可以明确回退 Fixture；来源字段会保留原 Provider 和失败类型，因此不会把合成回退伪装成在线数据。
+`SITE_SELECTION_POI_PROVIDER` 支持 `fixture`、`auto`、`amap` 和 `overpass`。`auto` 在存在 `AMAP_API_KEY` 时选择高德，否则选择 Overpass。在线响应统一转成 WGS84 `POIRecord`，写入 Redis 查询缓存，并按 `source + source_id` 去重入库 PostGIS。上游临时不可用时可以明确回退 Fixture；来源字段会保留原 Provider 和失败类型，因此不会把合成回退伪装成在线数据。Fixture 降级不会写入在线缓存键，防止一次短暂故障把少量演示数据固定复用一小时。
+
+Compose 默认选择 `auto`。候选发现除评分证据外还构建矩形范围 POI 背景层，覆盖当前审核支持的全部类别；Fixture、在线 Provider 的收录范围与 API 上限仍然是明确的数据边界。宽域评分响应达到上限时，正式分析会围绕已确认候选按 Profile 半径补查，避免把边界候选的少量命中直接解释为真实市场空白。补查改善的是查询覆盖口径，不会把单一 Provider 变成完整城市底库，也不会把 POI 推导成真实客流。
 
 ## 仍未解决的真实数据问题
 

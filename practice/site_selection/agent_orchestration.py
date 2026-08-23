@@ -86,6 +86,17 @@ class AgentExecutionPlan(BaseModel):
                     ready.append(candidate)
         if visited != known:
             raise ValueError("Agent 执行计划存在循环依赖")
+
+        declared: set[str] = set()
+        for step in self.steps:
+            forward_dependencies = set(step.depends_on) - declared
+            if forward_dependencies:
+                raise ValueError(
+                    "Agent 执行计划 steps 必须按拓扑顺序声明："
+                    f"{step.node_id} 依赖尚未声明的 "
+                    + ", ".join(sorted(forward_dependencies))
+                )
+            declared.add(step.node_id)
         return self
 
     def step(self, node_id: str) -> AgentSkillManifest:
@@ -125,7 +136,7 @@ def build_site_selection_execution_plan() -> AgentExecutionPlan:
 
     return AgentExecutionPlan(
         plan_id="site-selection-agent-dag",
-        version="2026.08-agent-v1",
+        version="2026.08-agent-v2",
         steps=[
             AgentSkillManifest(
                 node_id="intake",
@@ -147,18 +158,18 @@ def build_site_selection_execution_plan() -> AgentExecutionPlan:
                 node_id="spatial_evidence",
                 role=AgentRole.SPATIAL,
                 skill_name="SpatialComplianceSkill",
-                skill_version="v1",
+                skill_version="v2",
                 depends_on=["intake"],
                 parallel_group="evidence_collection",
-                output_contract="GISEvidence[]",
+                output_contract="GISEvidence[ready|not_run][]",
             ),
             AgentSkillManifest(
                 node_id="policy_rules",
                 role=AgentRole.POLICY,
                 skill_name="PolicyRuleSkill",
-                skill_version="v1",
+                skill_version="v2",
                 depends_on=["spatial_evidence"],
-                output_contract="PolicyEvidence[]",
+                output_contract="PolicyEvidence[ready|not_run][]",
             ),
             AgentSkillManifest(
                 node_id="merge_gate",
@@ -175,6 +186,116 @@ def build_site_selection_execution_plan() -> AgentExecutionPlan:
                 skill_version="v1",
                 depends_on=["merge_gate"],
                 output_contract="AgentState[completed]",
+            ),
+        ],
+    )
+
+
+def build_candidate_discovery_execution_plan() -> AgentExecutionPlan:
+    """Reviewed plan for generating analysis-ready candidate parcels."""
+
+    return AgentExecutionPlan(
+        plan_id="candidate-discovery-agent-dag",
+        version="2026.08-discovery-v1",
+        steps=[
+            AgentSkillManifest(
+                node_id="discovery_intake",
+                role=AgentRole.ORCHESTRATOR,
+                skill_name="DiscoveryScopeSkill",
+                skill_version="v1",
+                output_contract="CandidateDiscoveryRequest[validated]",
+            ),
+            AgentSkillManifest(
+                node_id="land_use_gate",
+                role=AgentRole.SPATIAL,
+                skill_name="LandUseEligibilitySkill",
+                skill_version="v1",
+                depends_on=["discovery_intake"],
+                parallel_group="discovery_evidence",
+                output_contract="LandUseEligibleCandidate[]",
+            ),
+            AgentSkillManifest(
+                node_id="poi_market_evidence",
+                role=AgentRole.POI,
+                skill_name="RetailMarketEvidenceSkill",
+                skill_version="v1",
+                depends_on=["discovery_intake"],
+                parallel_group="discovery_evidence",
+                output_contract="POIFeatureSet[]",
+            ),
+            AgentSkillManifest(
+                node_id="rank_diversify",
+                role=AgentRole.ORCHESTRATOR,
+                skill_name="CandidateRankDiversifySkill",
+                skill_version="v1",
+                depends_on=["land_use_gate", "poi_market_evidence"],
+                output_contract="DiscoveredCandidate[]",
+            ),
+            AgentSkillManifest(
+                node_id="discovery_review",
+                role=AgentRole.REVIEW,
+                skill_name="CandidateDiscoveryReviewSkill",
+                skill_version="v1",
+                depends_on=["rank_diversify"],
+                output_contract="CandidateDiscoveryReport[confirmation_required]",
+            ),
+        ],
+    )
+
+
+def build_site_selection_supervisor_execution_plan() -> AgentExecutionPlan:
+    """Reviewed top-level plan spanning discovery, approval and async analysis."""
+
+    return AgentExecutionPlan(
+        plan_id="site-selection-supervisor-dag",
+        version="2026.08-supervisor-v2",
+        steps=[
+            AgentSkillManifest(
+                node_id="supervisor_intake",
+                role=AgentRole.ORCHESTRATOR,
+                skill_name="SupervisorIntakeSkill",
+                skill_version="v1",
+                output_contract="SiteSelectionSupervisorState[running]",
+            ),
+            AgentSkillManifest(
+                node_id="candidate_discovery",
+                role=AgentRole.ORCHESTRATOR,
+                skill_name="CandidateDiscoverySubgraph",
+                skill_version="v1",
+                depends_on=["supervisor_intake"],
+                output_contract="CandidateDiscoveryReport",
+            ),
+            AgentSkillManifest(
+                node_id="candidate_confirmation",
+                role=AgentRole.REVIEW,
+                skill_name="CandidateConfirmationInterrupt",
+                skill_version="v1",
+                depends_on=["candidate_discovery"],
+                output_contract="CandidateSelection[validated]",
+            ),
+            AgentSkillManifest(
+                node_id="analysis_submitted",
+                role=AgentRole.ORCHESTRATOR,
+                skill_name="QueuedAnalysisSubmissionSkill",
+                skill_version="v2",
+                depends_on=["candidate_confirmation"],
+                output_contract="SupervisorAnalysisSubmission",
+            ),
+            AgentSkillManifest(
+                node_id="analysis_wait",
+                role=AgentRole.ORCHESTRATOR,
+                skill_name="AnalysisCompletionInterrupt",
+                skill_version="v1",
+                depends_on=["analysis_submitted"],
+                output_contract="SupervisorAnalysisCompletion",
+            ),
+            AgentSkillManifest(
+                node_id="analysis_completed",
+                role=AgentRole.REVIEW,
+                skill_name="AsyncAnalysisCompletionGate",
+                skill_version="v2",
+                depends_on=["analysis_wait"],
+                output_contract="SiteSelectionSupervisorState[terminal]",
             ),
         ],
     )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .analysis_scope import MARKET_SCOPE_NOTICE, is_market_selection
 from .evidence import AgentState, AnalysisStatus, EvidenceStatus
 from .review_contracts import (
     EvidenceReviewIssue,
@@ -16,7 +17,7 @@ class EvidenceReviewBlockedError(RuntimeError):
 def review_site_selection_evidence(
     state: AgentState,
     *,
-    review_version: str = "evidence-review-v2",
+    review_version: str = "evidence-review-v3",
 ) -> AgentState:
     """Audit lineage and completeness without generating a policy conclusion."""
 
@@ -26,10 +27,20 @@ def review_site_selection_evidence(
         raise EvidenceReviewBlockedError("证据审查要求候选地块对比已完成")
 
     issues: list[EvidenceReviewIssue] = []
+    market_selection = is_market_selection(state)
     for result in state.results:
         parcel_id = result.parcel_id
         gis = result.gis_evidence
-        if (
+        if market_selection and gis.status is EvidenceStatus.NOT_RUN:
+            issues.append(
+                EvidenceReviewIssue(
+                    issue_code="land_compliance_unverified",
+                    severity=ReviewIssueSeverity.WARNING,
+                    parcel_id=parcel_id,
+                    message=MARKET_SCOPE_NOTICE,
+                )
+            )
+        elif (
             gis.status is not EvidenceStatus.READY
             or not gis.dataset_ids
             or not gis.crs
@@ -115,6 +126,30 @@ def review_site_selection_evidence(
                         evidence_refs=source_refs,
                     )
                 )
+            supplement_failures = [
+                feature_set
+                for feature_set in poi.feature_sets
+                if feature_set.source.evidence_supplement_error is not None
+            ]
+            if supplement_failures:
+                issues.append(
+                    EvidenceReviewIssue(
+                        issue_code="poi_candidate_supplement_failed",
+                        severity=ReviewIssueSeverity.WARNING,
+                        parcel_id=parcel_id,
+                        message=(
+                            "候选点局部在线补查失败，已保留同一发现快照的"
+                            "可用切片；该评分组不能视为完整覆盖"
+                        ),
+                        evidence_refs=[
+                            (
+                                f"{feature_set.query.group_key}:"
+                                f"{feature_set.source.evidence_supplement_error}"
+                            )
+                            for feature_set in supplement_failures
+                        ],
+                    )
+                )
 
         if poi.soft_score is None or poi.score_report is None:
             issues.append(
@@ -127,7 +162,9 @@ def review_site_selection_evidence(
             )
 
         policy = result.policy_evidence
-        if (
+        if market_selection and policy.status is EvidenceStatus.NOT_RUN:
+            pass
+        elif (
             policy.status is not EvidenceStatus.READY
             or not policy.policy_ids
             or not policy.evaluated_rule_ids
@@ -156,7 +193,7 @@ def review_site_selection_evidence(
                     ],
                 )
             )
-        else:
+        elif not market_selection:
             issues.append(
                 EvidenceReviewIssue(
                     issue_code="no_rule_match_is_not_compliance",
@@ -177,6 +214,25 @@ def review_site_selection_evidence(
                     evidence_refs=[result.site_score_report.scoring_version],
                 )
             )
+
+    for group_key, cohort in _poi_quality_cohorts(state).items():
+        quality_states = {quality for _, quality in cohort}
+        if len(quality_states) <= 1:
+            continue
+        issues.append(
+            EvidenceReviewIssue(
+                issue_code="poi_candidate_cohort_inconsistent",
+                severity=ReviewIssueSeverity.WARNING,
+                message=(
+                    f"评分组 {group_key} 在候选之间混用了不同完整度的 POI "
+                    "证据，数量差异不能直接解释为真实密度差异"
+                ),
+                evidence_refs=[
+                    f"{parcel_id}:{quality}"
+                    for parcel_id, quality in sorted(cohort)
+                ],
+            )
+        )
 
     status = (
         EvidenceReviewStatus.BLOCKED
@@ -199,3 +255,22 @@ def review_site_selection_evidence(
     data = state.model_dump()
     data["evidence_review_report"] = report
     return AgentState.model_validate(data)
+
+
+def _poi_quality_cohorts(state: AgentState) -> dict[str, list[tuple[str, str]]]:
+    cohorts: dict[str, list[tuple[str, str]]] = {}
+    for result in state.results:
+        for feature_set in result.poi_evidence.feature_sets:
+            source = feature_set.source
+            if source.evidence_supplement_error is not None:
+                quality = "supplement_failed"
+            elif source.is_synthetic or source.fallback_from is not None:
+                quality = "synthetic_fallback"
+            elif source.is_truncated:
+                quality = "real_truncated"
+            else:
+                quality = "real_complete"
+            cohorts.setdefault(feature_set.query.group_key, []).append(
+                (result.parcel_id, quality)
+            )
+    return cohorts

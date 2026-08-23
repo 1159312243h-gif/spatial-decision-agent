@@ -181,6 +181,36 @@ def test_amap_exposes_provider_count_when_query_limit_truncates_results() -> Non
     assert result.source.is_truncated is True
 
 
+def test_amap_page_budget_bounds_large_candidate_discovery_query() -> None:
+    first_page = [amap_item(index, 121.480 + index / 10_000) for index in range(25)]
+    second_page = [
+        amap_item(index + 25, 121.483 + index / 10_000)
+        for index in range(25)
+    ]
+    client = FakeHTTPClient(
+        [
+            FakeResponse(200, amap_payload(first_page, count=600)),
+            FakeResponse(200, amap_payload(second_page, count=600)),
+        ]
+    )
+    adapter = AmapPOIAdapter(
+        "test-api-key",
+        client,
+        OffsetTransformer(),
+        max_pages_per_search=2,
+        max_categories_per_query=3,
+        clock=lambda: NOW,
+    )
+
+    result = adapter.search(query(limit=1_000))
+
+    assert len(client.get_calls) == 2
+    assert len(result.records) == 50
+    assert result.source.available_record_count == 600
+    assert result.source.is_truncated is True
+    assert adapter.max_categories_per_query == 3
+
+
 def test_amap_maps_http_and_business_quota_to_rate_limit() -> None:
     http_limited = AmapPOIAdapter(
         "test-api-key",
@@ -386,6 +416,8 @@ def test_overpass_builds_controlled_query_and_parses_node_and_way() -> None:
     assert '["amenity"="hospital"]' in statement
     assert "121.47000000" in statement
     assert limiter.calls == 1
+    assert adapter.max_categories_per_query == 3
+    assert "categories=3" in adapter.cache_token
 
 
 def test_overpass_rejects_unknown_category_before_http() -> None:

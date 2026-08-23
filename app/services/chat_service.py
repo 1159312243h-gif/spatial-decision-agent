@@ -1,13 +1,21 @@
+"""Compatibility facade for callers that used the original chat service module."""
+
 from app.schemas.chat import ChatRequest, ChatResponse
+from app.services.site_selection_conversation import (
+    SiteSelectionConversationService,
+)
 
 
-def answer_chat(request: ChatRequest) -> ChatResponse:
-    return ChatResponse(
-        answer=(
-            f"已接收 {request.project_type} 项目的问题："
-            f"{request.question}。"
-            "当前为桩接口，尚未执行真实选址分析。"
-        ),
-        status="stub",
+def answer_chat(
+    request: ChatRequest,
+    service: SiteSelectionConversationService,
+) -> ChatResponse:
+    reply = service.converse(
+        request.question,
+        session_id=request.session_id,
+        project_type=request.project_type,
+    )
+    return ChatResponse.from_reply(
+        reply,
         received_candidates=len(request.candidate_parcels),
     )

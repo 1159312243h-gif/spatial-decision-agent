@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Protocol
 
 from app.schemas.site_selection import SiteSelectionAnalysisCreate
@@ -19,6 +21,8 @@ class SiteSelectionJobQueue(Protocol):
         self,
         run_id: str,
         command: SiteSelectionAnalysisCreate,
+        *,
+        supervisor_session_id: str | None = None,
     ) -> None: ...
 
     def cancel(self, job_id: str, *, running: bool) -> None: ...
@@ -77,10 +81,16 @@ class RQSiteSelectionJobQueue:
     def job_id_for(self, run_id: str) -> str:
         return f"site-selection-{run_id}"
 
+    @property
+    def job_timeout_seconds(self) -> int:
+        return self._settings.job_timeout_seconds
+
     def enqueue(
         self,
         run_id: str,
         command: SiteSelectionAnalysisCreate,
+        *,
+        supervisor_session_id: str | None = None,
     ) -> None:
         from app.services.site_selection_worker import (
             execute_site_selection_job,
@@ -92,6 +102,7 @@ class RQSiteSelectionJobQueue:
             kwargs={
                 "run_id": run_id,
                 "command_payload": command.model_dump(mode="json"),
+                "supervisor_session_id": supervisor_session_id,
             },
             job_id=self.job_id_for(run_id),
             timeout=self._settings.job_timeout_seconds,
@@ -103,6 +114,7 @@ class RQSiteSelectionJobQueue:
                 "runtime_namespace": self._settings.runtime_namespace,
                 "run_ttl_seconds": self._settings.run_ttl_seconds,
                 "event_ttl_seconds": self._settings.event_ttl_seconds,
+                "supervisor_session_id": supervisor_session_id,
             },
         )
 
@@ -129,21 +141,36 @@ class QueuedSiteSelectionRunService:
         self,
         executor: SiteSelectionRunService,
         queue: SiteSelectionJobQueue,
+        *,
+        stale_run_grace_seconds: int = 30,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if executor is None or queue is None:
             raise ValueError("queued run service requires executor and queue")
+        if stale_run_grace_seconds < 0:
+            raise ValueError("stale run grace period cannot be negative")
         self._executor = executor
         self._queue = queue
+        raw_timeout = getattr(queue, "job_timeout_seconds", None)
+        self._job_timeout_seconds = (
+            int(raw_timeout)
+            if isinstance(raw_timeout, (int, float)) and raw_timeout > 0
+            else None
+        )
+        self._stale_run_grace_seconds = stale_run_grace_seconds
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     def create_run(
         self,
         command: SiteSelectionAnalysisCreate,
         *,
         idempotency_key: str | None = None,
+        supervisor_session_id: str | None = None,
     ) -> RunState:
         prepared = self._executor.prepare_run(
             command,
             idempotency_key=idempotency_key,
+            supervisor_session_id=supervisor_session_id,
         )
         if not prepared.created:
             return prepared.state
@@ -152,7 +179,11 @@ class QueuedSiteSelectionRunService:
         job_id = self._queue.job_id_for(run_id)
         enqueued = self._executor.mark_enqueued(run_id, job_id=job_id)
         try:
-            self._queue.enqueue(run_id, command)
+            self._queue.enqueue(
+                run_id,
+                command,
+                supervisor_session_id=supervisor_session_id,
+            )
         except Exception as exc:
             return self._executor.mark_enqueue_failed(run_id, exc)
         return enqueued
@@ -179,7 +210,18 @@ class QueuedSiteSelectionRunService:
         return cancelled
 
     def get_run(self, run_id: str) -> RunState:
-        return self._executor.get_run(run_id)
+        state = self._executor.get_run(run_id)
+        if (
+            state.status is RunStatus.RUNNING
+            and self._job_timeout_seconds is not None
+            and (self._clock() - state.updated_at).total_seconds()
+            > self._job_timeout_seconds + self._stale_run_grace_seconds
+        ):
+            return self._executor.mark_timed_out(
+                run_id,
+                error_type="StaleWorkerTimeout",
+            )
+        return state
 
     def get_events(self, run_id: str) -> list[RunEvent]:
         return self._executor.get_events(run_id)

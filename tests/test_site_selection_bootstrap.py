@@ -1,5 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timezone
+import sys
+import types
 
 import geopandas as gpd
 import pytest
@@ -7,9 +9,11 @@ from shapely.geometry import shape
 
 from app.site_selection_bootstrap import (
     SiteSelectionBootstrapError,
+    _build_optional_explainer,
     build_fixture_runtime_registry,
     build_site_selection_bootstrap_from_environment,
     load_fixture_spatial_seed,
+    open_postgres_supervisor_checkpointer,
     seed_fixture_storage,
 )
 from practice.site_selection import (
@@ -27,6 +31,56 @@ from tests.test_site_selection_async_queue import FakeJobQueue
 
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "data" / "fixtures"
+
+
+def test_optional_explainer_has_bounded_timeout_and_no_default_retries() -> None:
+    calls = []
+
+    def client_factory(**kwargs):
+        calls.append(kwargs)
+        return object()
+
+    explainer = _build_optional_explainer(
+        {
+            "LLM_API_KEY": "fixture-key",
+            "LLM_BASE_URL": "https://llm.example/v1",
+            "LLM_MODEL": "fixture-model",
+        },
+        client_factory=client_factory,
+    )
+
+    assert explainer is not None
+    assert calls == [
+        {
+            "api_key": "fixture-key",
+            "base_url": "https://llm.example/v1",
+            "timeout": 15.0,
+            "max_retries": 0,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("SITE_SELECTION_EXPLANATION_TIMEOUT_SECONDS", "0", "必须是正数"),
+        ("SITE_SELECTION_EXPLANATION_MAX_RETRIES", "-1", "必须是非负整数"),
+    ],
+)
+def test_optional_explainer_rejects_unbounded_retry_configuration(
+    name,
+    value,
+    message,
+) -> None:
+    values = {
+        "LLM_API_KEY": "fixture-key",
+        "LLM_BASE_URL": "https://llm.example/v1",
+        "LLM_MODEL": "fixture-model",
+        name: value,
+    }
+
+    with pytest.raises(SiteSelectionBootstrapError, match=message):
+        _build_optional_explainer(values, client_factory=lambda **kwargs: object())
 
 
 def test_runtime_is_fail_closed_when_mode_is_not_enabled() -> None:
@@ -78,8 +132,10 @@ def test_spatial_fixture_declares_all_projects_and_expected_layers() -> None:
         "demo-logistics-constraints",
         "demo-coffee-candidates",
         "demo-coffee-constraints",
+        "demo-coffee-discovery-pool",
         "demo-convenience-candidates",
         "demo-convenience-constraints",
+        "demo-convenience-discovery-pool",
     }
     assert seed.crs == "EPSG:32651"
     layers = {layer.layer_id: layer for layer in seed.layers}
@@ -87,6 +143,8 @@ def test_spatial_fixture_declares_all_projects_and_expected_layers() -> None:
     assert len(layers["demo-logistics-candidates"].features) == 6
     assert len(layers["demo-coffee-candidates"].features) == 6
     assert len(layers["demo-convenience-candidates"].features) == 6
+    assert len(layers["demo-coffee-discovery-pool"].features) == 25
+    assert len(layers["demo-convenience-discovery-pool"].features) == 25
 
 
 def test_fixture_registry_exposes_all_reviewed_project_types() -> None:
@@ -104,7 +162,14 @@ def test_fixture_registry_exposes_all_reviewed_project_types() -> None:
     for project_type in registry.configured_types:
         runtime = registry.resolve(project_type)
         assert runtime.project_type is project_type
-        assert len(runtime.datasets) == 2
+        assert len(runtime.datasets) == (
+            3
+            if project_type in {
+                ProjectType.COFFEE_SHOP,
+                ProjectType.CONVENIENCE_STORE,
+            }
+            else 2
+        )
         assert runtime.dependencies.site_scoring_config is not None
         assert runtime.dependencies.poi_scoring_config.version.startswith("fixture-")
         assert all(
@@ -248,4 +313,127 @@ def test_async_bootstrap_builds_separate_queue_and_skips_mcp(tmp_path) -> None:
 
     assert queue.closed is True
     assert redis_client.close_calls == 1
+    assert engine.dispose_calls == 1
+
+
+def test_postgres_supervisor_checkpointer_normalizes_url_and_runs_setup(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    class FakeSaver:
+        def setup(self) -> None:
+            calls.append("setup")
+
+    class FakeContext:
+        def __init__(self) -> None:
+            self.saver = FakeSaver()
+
+        def __enter__(self):
+            calls.append("enter")
+            return self.saver
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            calls.append("exit")
+
+    context = FakeContext()
+
+    class FakePostgresSaver:
+        @classmethod
+        def from_conn_string(cls, value):
+            calls.append(value)
+            return context
+
+    module = types.ModuleType("langgraph.checkpoint.postgres")
+    module.PostgresSaver = FakePostgresSaver
+    monkeypatch.setitem(sys.modules, "langgraph.checkpoint.postgres", module)
+
+    saver, opened_context = open_postgres_supervisor_checkpointer(
+        "postgresql+psycopg://agent:secret@postgis/site_selection"
+    )
+
+    assert saver is context.saver
+    assert opened_context is context
+    assert calls == [
+        "postgresql://agent:secret@postgis/site_selection",
+        "enter",
+        "setup",
+    ]
+
+    opened_context.__exit__(None, None, None)
+    assert calls[-1] == "exit"
+
+
+def test_bootstrap_wires_durable_supervisor_without_memory_fallback(
+    tmp_path,
+) -> None:
+    class FakeEngine:
+        def __init__(self) -> None:
+            self.connection = FakeConnection()
+            self.dispose_calls = 0
+
+        def begin(self):
+            connection = self.connection
+
+            class Transaction:
+                def __enter__(self):
+                    return connection
+
+                def __exit__(self, exc_type, exc_value, traceback):
+                    return False
+
+            return Transaction()
+
+        def dispose(self) -> None:
+            self.dispose_calls += 1
+
+    class PingableRedis(FakeRedis):
+        def ping(self) -> bool:
+            return True
+
+        def close(self) -> None:
+            pass
+
+    class FakeContext:
+        def __init__(self) -> None:
+            self.exit_calls = 0
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.exit_calls += 1
+
+    engine = FakeEngine()
+    context = FakeContext()
+    saver = object()
+    captured_urls = []
+
+    bootstrap = build_site_selection_bootstrap_from_environment(
+        {
+            "SITE_SELECTION_RUNTIME_MODE": "fixture",
+            "SITE_SELECTION_RUN_MODE": "sync",
+            "SITE_SELECTION_SUPERVISOR_ENABLED": "true",
+            "SITE_SELECTION_SUPERVISOR_SESSION_TTL_SECONDS": "900",
+            "SITE_SELECTION_SUPERVISOR_LOCK_TTL_SECONDS": "30",
+            "DATABASE_URL": "postgresql+psycopg://fixture",
+            "REDIS_URL": "redis://fixture/0",
+            "SITE_SELECTION_REPORT_DIR": str(tmp_path / "reports"),
+        },
+        engine_factory=lambda *args, **kwargs: engine,
+        redis_factory=lambda *args, **kwargs: PingableRedis(),
+        supervisor_checkpointer_factory=lambda url: (
+            captured_urls.append(url) or saver,
+            context,
+        ),
+        migration_applier=lambda configured_engine: None,
+        fixture_root=FIXTURE_ROOT,
+        include_mcp=False,
+    )
+
+    assert bootstrap.supervisor_checkpointer is saver
+    assert bootstrap.supervisor_coordinator is not None
+    assert captured_urls == ["postgresql+psycopg://fixture"]
+
+    bootstrap.close()
+    bootstrap.close()
+
+    assert context.exit_calls == 1
     assert engine.dispose_calls == 1

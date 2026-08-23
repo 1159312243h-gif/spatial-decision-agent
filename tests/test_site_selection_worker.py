@@ -9,6 +9,7 @@ from app.services.site_selection_service import SiteSelectionRuntimeRegistry
 from practice.site_selection import ProjectType
 from practice.site_selection.storage import (
     RedisSiteSelectionRuntimeStore,
+    RunState,
     RunStatus,
 )
 from tests.storage_fakes import FakeRedis
@@ -144,3 +145,76 @@ def test_generic_failure_callback_records_sanitized_failure() -> None:
     assert state.status is RunStatus.FAILED
     assert state.error == "选址 Worker 执行失败：RuntimeError"
     assert "secret-token" not in state.model_dump_json()
+
+
+def test_worker_resumes_correlated_supervisor_after_terminal_run(
+    monkeypatch,
+) -> None:
+    completed = RunState(
+        run_id="run-worker-terminal-001",
+        status=RunStatus.COMPLETED,
+        updated_at=prepared_run(configured_store()[1])[1].updated_at,
+        details={"supervisor_session_id": "supervisor-worker-001"},
+    )
+    captured = {}
+
+    class FakeSupervisorService:
+        def complete_analysis(self, session_id, state):
+            captured["session_id"] = session_id
+            captured["state"] = state
+
+    def fake_factory(**kwargs):
+        captured["factory"] = kwargs
+        return FakeSupervisorService()
+
+    monkeypatch.setattr(
+        site_selection_worker,
+        "build_site_selection_supervisor_service",
+        fake_factory,
+    )
+    bootstrap = SimpleNamespace(
+        runtime_provider=object(),
+        run_store=object(),
+        report_store=None,
+        explainer=None,
+        supervisor_checkpointer=object(),
+        supervisor_coordinator=object(),
+    )
+
+    resumed = site_selection_worker.resume_supervisor_for_terminal_run(
+        bootstrap,
+        completed,
+        expected_session_id="supervisor-worker-001",
+        run_service=object(),
+    )
+
+    assert resumed is True
+    assert captured["session_id"] == "supervisor-worker-001"
+    assert captured["state"] == completed
+    assert captured["factory"]["checkpointer"] is (
+        bootstrap.supervisor_checkpointer
+    )
+
+
+def test_worker_does_not_resume_mismatched_supervisor() -> None:
+    state = RunState(
+        run_id="run-worker-mismatch-001",
+        status=RunStatus.CANCELLED,
+        updated_at=prepared_run(configured_store()[1])[1].updated_at,
+        details={"supervisor_session_id": "supervisor-a"},
+    )
+    bootstrap = SimpleNamespace(
+        supervisor_checkpointer=object(),
+        supervisor_coordinator=object(),
+    )
+
+    try:
+        site_selection_worker.resume_supervisor_for_terminal_run(
+            bootstrap,
+            state,
+            expected_session_id="supervisor-b",
+        )
+    except RuntimeError as exc:
+        assert "correlation" in str(exc)
+    else:
+        raise AssertionError("错配的 Supervisor correlation 必须被拒绝")

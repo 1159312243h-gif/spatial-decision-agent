@@ -10,6 +10,8 @@ from typing import Any, Protocol
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..domain import NonEmptyString
+from ..evidence_snapshot import CandidateDiscoveryPOISnapshot
+from ..online_land_use import LandUseFeatureSet, LandUseQuery
 from ..poi import POIFeatureSet, POIQuery
 from .redis_state import RedisRunStateStore, RunState
 
@@ -97,17 +99,28 @@ class RedisSiteSelectionRuntimeStore:
         run_ttl_seconds: int = 86_400,
         idempotency_ttl_seconds: int = 86_400,
         poi_cache_ttl_seconds: int = 3_600,
+        land_use_cache_ttl_seconds: int = 3_600,
+        discovery_snapshot_ttl_seconds: int | None = None,
         event_ttl_seconds: int = 86_400,
+        scenario_session_ttl_seconds: int = 86_400,
     ) -> None:
         if client is None:
             raise ValueError("Redis 运行时存储必须配置客户端")
         if _SAFE_NAMESPACE.fullmatch(namespace) is None:
             raise ValueError("Redis namespace 包含不安全字符")
+        snapshot_ttl = (
+            min(7_200, run_ttl_seconds)
+            if discovery_snapshot_ttl_seconds is None
+            else discovery_snapshot_ttl_seconds
+        )
         ttls = {
             "run": run_ttl_seconds,
             "idempotency": idempotency_ttl_seconds,
             "poi_cache": poi_cache_ttl_seconds,
+            "land_use_cache": land_use_cache_ttl_seconds,
+            "discovery_snapshot": snapshot_ttl,
             "events": event_ttl_seconds,
+            "scenario_session": scenario_session_ttl_seconds,
         }
         invalid = [name for name, value in ttls.items() if value <= 0]
         if invalid:
@@ -116,12 +129,17 @@ class RedisSiteSelectionRuntimeStore:
             raise ValueError("幂等键 TTL 不能长于运行状态 TTL")
         if event_ttl_seconds > run_ttl_seconds:
             raise ValueError("运行事件 TTL 不能长于运行状态 TTL")
+        if snapshot_ttl > run_ttl_seconds:
+            raise ValueError("候选发现证据快照 TTL 不能长于运行状态 TTL")
 
         self._client = client
         self._namespace = namespace
         self._idempotency_ttl_seconds = idempotency_ttl_seconds
         self._poi_cache_ttl_seconds = poi_cache_ttl_seconds
+        self._land_use_cache_ttl_seconds = land_use_cache_ttl_seconds
+        self._discovery_snapshot_ttl_seconds = snapshot_ttl
         self._event_ttl_seconds = event_ttl_seconds
+        self._scenario_session_ttl_seconds = scenario_session_ttl_seconds
         self.run_states = RedisRunStateStore(
             client,
             namespace=f"{namespace}:run_state",
@@ -202,6 +220,76 @@ class RedisSiteSelectionRuntimeStore:
             self._client.delete(self._poi_cache_key(query, cache_scope))
         )
 
+    def get_cached_land_use(
+        self,
+        query: LandUseQuery,
+        *,
+        cache_scope: str,
+    ) -> LandUseFeatureSet | None:
+        payload = self._client.get(
+            self._land_use_cache_key(query, cache_scope)
+        )
+        decoded = _decode(payload)
+        if decoded is None:
+            return None
+        return LandUseFeatureSet.model_validate_json(decoded)
+
+    def save_cached_land_use(
+        self,
+        feature_set: LandUseFeatureSet,
+        *,
+        cache_scope: str,
+    ) -> None:
+        self._client.set(
+            self._land_use_cache_key(feature_set.query, cache_scope),
+            feature_set.model_dump_json(),
+            ex=self._land_use_cache_ttl_seconds,
+        )
+
+    def save_candidate_discovery_snapshot(
+        self,
+        snapshot: CandidateDiscoveryPOISnapshot,
+    ) -> None:
+        self._client.set(
+            self._discovery_snapshot_key(snapshot.snapshot_id),
+            snapshot.model_dump_json(),
+            ex=self._discovery_snapshot_ttl_seconds,
+        )
+
+    def get_candidate_discovery_snapshot(
+        self,
+        snapshot_id: str,
+    ) -> CandidateDiscoveryPOISnapshot | None:
+        payload = _decode(
+            self._client.get(self._discovery_snapshot_key(snapshot_id))
+        )
+        if payload is None:
+            return None
+        return CandidateDiscoveryPOISnapshot.model_validate_json(payload)
+
+    def save_scenario_session(
+        self,
+        session: "ScenarioConversationSession",
+    ) -> None:
+        self._client.set(
+            self._scenario_session_key(session.session_id),
+            session.model_dump_json(),
+            ex=self._scenario_session_ttl_seconds,
+        )
+
+    def get_scenario_session(
+        self,
+        session_id: str,
+    ) -> "ScenarioConversationSession | None":
+        from ..scenario import ScenarioConversationSession
+
+        payload = _decode(
+            self._client.get(self._scenario_session_key(session_id))
+        )
+        if payload is None:
+            return None
+        return ScenarioConversationSession.model_validate_json(payload)
+
     def append_event(self, event: RunEvent) -> None:
         _validate_run_id(event.run_id)
         key = self._events_key(event.run_id)
@@ -222,9 +310,25 @@ class RedisSiteSelectionRuntimeStore:
     def poi_cache_ttl(self, query: POIQuery, *, cache_scope: str) -> int:
         return self._client.ttl(self._poi_cache_key(query, cache_scope))
 
+    def land_use_cache_ttl(
+        self,
+        query: LandUseQuery,
+        *,
+        cache_scope: str,
+    ) -> int:
+        return self._client.ttl(
+            self._land_use_cache_key(query, cache_scope)
+        )
+
+    def candidate_discovery_snapshot_ttl(self, snapshot_id: str) -> int:
+        return self._client.ttl(self._discovery_snapshot_key(snapshot_id))
+
     def events_ttl(self, run_id: str) -> int:
         _validate_run_id(run_id)
         return self._client.ttl(self._events_key(run_id))
+
+    def scenario_session_ttl(self, session_id: str) -> int:
+        return self._client.ttl(self._scenario_session_key(session_id))
 
     def _idempotency_key(self, normalized_key: str) -> str:
         digest = sha256(normalized_key.encode("utf-8")).hexdigest()
@@ -254,6 +358,39 @@ class RedisSiteSelectionRuntimeStore:
     def _events_key(self, run_id: str) -> str:
         return f"{self._namespace}:events:{run_id}"
 
+    def _land_use_cache_key(
+        self,
+        query: LandUseQuery,
+        cache_scope: str,
+    ) -> str:
+        normalized_scope = cache_scope.strip()
+        if not normalized_scope:
+            raise ValueError("用地 cache_scope 不能为空")
+        payload = {
+            "scope": normalized_scope,
+            "project_type": query.project_type.value,
+            "west": query.west,
+            "south": query.south,
+            "east": query.east,
+            "north": query.north,
+        }
+        canonical = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        digest = sha256(canonical.encode("utf-8")).hexdigest()
+        return f"{self._namespace}:land_use_cache:{digest}"
+
+    def _discovery_snapshot_key(self, snapshot_id: str) -> str:
+        _validate_snapshot_id(snapshot_id)
+        return f"{self._namespace}:discovery_snapshot:{snapshot_id}"
+
+    def _scenario_session_key(self, session_id: str) -> str:
+        _validate_session_id(session_id)
+        return f"{self._namespace}:scenario_session:{session_id}"
+
 
 def _normalize_idempotency_key(value: str) -> str:
     normalized = value.strip()
@@ -267,6 +404,16 @@ def _normalize_idempotency_key(value: str) -> str:
 def _validate_run_id(run_id: str) -> None:
     if _SAFE_RUN_ID.fullmatch(run_id) is None:
         raise ValueError("run_id 只能包含字母、数字、点、下划线和连字符")
+
+
+def _validate_snapshot_id(snapshot_id: str) -> None:
+    if _SAFE_RUN_ID.fullmatch(snapshot_id) is None:
+        raise ValueError("snapshot_id 只能包含字母、数字、点、下划线和连字符")
+
+
+def _validate_session_id(session_id: str) -> None:
+    if _SAFE_RUN_ID.fullmatch(session_id) is None:
+        raise ValueError("session_id 只能包含字母、数字、点、下划线和连字符")
 
 
 def _decode(value: bytes | str | None) -> str | None:

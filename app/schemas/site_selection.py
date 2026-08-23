@@ -8,11 +8,14 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from practice.site_selection import (
+    AnalysisScope,
     AgentExecutionPlan,
     AgentStepTrace,
     AnalysisResult,
     AnalysisStatus,
     CandidateComparisonReport,
+    CandidateDiscoveryReport,
+    CandidateSelection,
     CandidateParcel,
     DatasetManifest,
     EvidenceReviewReport,
@@ -26,8 +29,17 @@ from practice.site_selection import (
     ProjectType,
     SiteSelectionDraft,
     RunStageTrace,
+    SiteSelectionSupervisorRun,
+    SupervisorAnalysisStatus,
+    SupervisorConfirmationRequest,
+    SupervisorStatus,
 )
-from practice.site_selection.storage import RunEvent, RunState, RunStatus
+from practice.site_selection.storage import (
+    RunEvent,
+    RunState,
+    RunStatus,
+    SupervisorSessionEvent,
+)
 from app.services.site_selection_explanation import SiteSelectionEvidenceExplanation
 
 
@@ -55,13 +67,24 @@ class SiteSelectionAnalysisCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     project_type: ProjectType
+    analysis_scope: AnalysisScope = AnalysisScope.FULL_COMPLIANCE
     candidate_parcels: list[CandidateParcelInput] = Field(min_length=1)
+    poi_evidence_snapshot_id: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9._-]+$",
+    )
 
     @model_validator(mode="after")
     def candidate_ids_are_unique(self) -> SiteSelectionAnalysisCreate:
         parcel_ids = [parcel.parcel_id for parcel in self.candidate_parcels]
         if len(parcel_ids) != len(set(parcel_ids)):
             raise ValueError("候选地块编号不能重复")
+        if (
+            self.analysis_scope is AnalysisScope.MARKET_SELECTION
+            and self.project_type
+            not in {ProjectType.COFFEE_SHOP, ProjectType.CONVENIENCE_STORE}
+        ):
+            raise ValueError("市场选址分析当前只支持咖啡店和便利店")
         return self
 
 
@@ -117,6 +140,7 @@ class SiteSelectionAnalysisResponse(BaseModel):
     request_id: NonEmptyString
     requested_at: datetime
     project_type: ProjectType
+    analysis_scope: AnalysisScope
     status: AnalysisStatus
     results: list[AnalysisResult] = Field(default_factory=list)
     comparison_report: CandidateComparisonReport | None = None
@@ -131,6 +155,7 @@ class SiteSelectionAnalysisResponse(BaseModel):
             request_id=state.request.request_id,
             requested_at=state.request.requested_at,
             project_type=state.request.project_type,
+            analysis_scope=state.request.analysis_scope,
             status=state.status,
             results=state.results,
             comparison_report=state.comparison_report,
@@ -158,6 +183,8 @@ class SiteSelectionRunResponse(BaseModel):
     explanation: SiteSelectionEvidenceExplanation | None = None
     human_review: HumanReviewState | None = None
     trace: list[RunStageTrace] = Field(default_factory=list)
+    poi_evidence_snapshot_id: NonEmptyString | None = None
+    poi_evidence_snapshot_reused: bool = False
 
     @classmethod
     def from_state(cls, state: RunState) -> SiteSelectionRunResponse:
@@ -181,6 +208,12 @@ class SiteSelectionRunResponse(BaseModel):
             explanation=state.details.get("explanation"),
             human_review=state.details.get("human_review"),
             trace=state.details.get("trace", []),
+            poi_evidence_snapshot_id=state.details.get(
+                "poi_evidence_snapshot_id"
+            ),
+            poi_evidence_snapshot_reused=bool(
+                state.details.get("poi_evidence_snapshot_reused", False)
+            ),
         )
 
 
@@ -195,6 +228,82 @@ class SiteSelectionRunEventsResponse(BaseModel):
 
     run_id: NonEmptyString
     events: list[RunEvent] = Field(default_factory=list)
+
+
+class SiteSelectionSupervisorConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_checkpoint_id: NonEmptyString
+    selected_candidate_ids: list[NonEmptyString] = Field(min_length=1)
+    reviewer_id: NonEmptyString
+    note: NonEmptyString | None = None
+
+    @model_validator(mode="after")
+    def candidate_ids_are_unique(self) -> SiteSelectionSupervisorConfirmRequest:
+        if len(self.selected_candidate_ids) != len(
+            set(self.selected_candidate_ids)
+        ):
+            raise ValueError("人工确认的候选 ID 不能重复")
+        return self
+
+    def to_domain(self) -> CandidateSelection:
+        return CandidateSelection(
+            selected_candidate_ids=self.selected_candidate_ids,
+            reviewer_id=self.reviewer_id,
+            note=self.note,
+        )
+
+
+class SiteSelectionSupervisorResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: NonEmptyString
+    checkpoint_id: NonEmptyString
+    session_ttl_seconds: int = Field(ge=0)
+    status: SupervisorStatus
+    discovery_report: CandidateDiscoveryReport | None = None
+    confirmation_request: SupervisorConfirmationRequest | None = None
+    confirmation: CandidateSelection | None = None
+    analysis_run_id: NonEmptyString | None = None
+    analysis_run_status: SupervisorAnalysisStatus | None = None
+    analysis_error_type: NonEmptyString | None = None
+    analysis: SiteSelectionAnalysisResponse | None = None
+    execution_plan: AgentExecutionPlan
+    supervisor_trace: list[AgentStepTrace] = Field(default_factory=list)
+
+    @classmethod
+    def from_run(
+        cls,
+        run: SiteSelectionSupervisorRun,
+        *,
+        session_ttl_seconds: int,
+    ) -> SiteSelectionSupervisorResponse:
+        return cls(
+            session_id=run.session_id,
+            checkpoint_id=run.checkpoint_id,
+            session_ttl_seconds=max(0, session_ttl_seconds),
+            status=run.status,
+            discovery_report=run.discovery_report,
+            confirmation_request=run.confirmation_request,
+            confirmation=run.confirmation,
+            analysis_run_id=run.analysis_run_id,
+            analysis_run_status=run.analysis_run_status,
+            analysis_error_type=run.analysis_error_type,
+            analysis=(
+                SiteSelectionAnalysisResponse.from_state(run.analysis_state)
+                if run.analysis_state is not None
+                else None
+            ),
+            execution_plan=run.execution_plan,
+            supervisor_trace=run.supervisor_trace,
+        )
+
+
+class SiteSelectionSupervisorEventsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: NonEmptyString
+    events: list[SupervisorSessionEvent] = Field(default_factory=list)
 
 
 class SiteSelectionPOIPreviewRequest(BaseModel):
@@ -251,6 +360,10 @@ AnalysisErrorCode = Literal[
     "analysis_internal_error",
     "idempotency_conflict",
     "runtime_unavailable",
+    "supervisor_confirmation_blocked",
+    "supervisor_conflict",
+    "supervisor_internal_error",
+    "supervisor_unavailable",
 ]
 
 

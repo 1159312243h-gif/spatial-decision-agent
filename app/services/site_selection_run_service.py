@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from time import perf_counter
@@ -30,6 +31,7 @@ from app.services.site_selection_explanation import (
 from practice.site_selection import (
     AgentState,
     AnalysisStatus,
+    CandidateDiscoverySnapshotNotFoundError,
     DatasetManifest,
     POIFeatureSet,
     POIQuery,
@@ -39,8 +41,10 @@ from practice.site_selection import (
     RunStageStatus,
     RunStageTrace,
     SiteSelectionWorkflowDependencies,
+    SnapshotReusingPOIGateway,
     build_human_review_state,
     run_parallel_site_selection_workflow,
+    validate_snapshot_selection,
 )
 from practice.site_selection.storage import (
     RedisSiteSelectionRuntimeStore,
@@ -49,6 +53,9 @@ from practice.site_selection.storage import (
     RunState,
     RunStatus,
 )
+
+
+_SAFE_SUPERVISOR_SESSION_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 class SiteSelectionRunServiceUnavailableError(RuntimeError):
@@ -73,6 +80,7 @@ class SiteSelectionRunServiceProtocol(Protocol):
         command: SiteSelectionAnalysisCreate,
         *,
         idempotency_key: str | None = None,
+        supervisor_session_id: str | None = None,
     ) -> RunState: ...
 
     def get_run(self, run_id: str) -> RunState: ...
@@ -153,8 +161,13 @@ class SiteSelectionRunService:
         command: SiteSelectionAnalysisCreate,
         *,
         idempotency_key: str | None = None,
+        supervisor_session_id: str | None = None,
     ) -> RunState:
-        prepared = self.prepare_run(command, idempotency_key=idempotency_key)
+        prepared = self.prepare_run(
+            command,
+            idempotency_key=idempotency_key,
+            supervisor_session_id=supervisor_session_id,
+        )
         if not prepared.created:
             return prepared.state
         return self.execute_run(prepared.state.run_id, command)
@@ -164,8 +177,15 @@ class SiteSelectionRunService:
         command: SiteSelectionAnalysisCreate,
         *,
         idempotency_key: str | None = None,
+        supervisor_session_id: str | None = None,
     ) -> PreparedSiteSelectionRun:
         runtime = self._resolve_runtime(command.project_type)
+        request = _build_request(
+            command,
+            request_id=self._request_id_factory(),
+            requested_at=self._clock(),
+        )
+        self._dependencies_for(command, request, runtime)
         proposed_run_id = self._run_id_factory()
         if idempotency_key is not None:
             claim = self._store.claim_idempotency(
@@ -182,16 +202,18 @@ class SiteSelectionRunService:
                 return PreparedSiteSelectionRun(state=existing, created=False)
 
         run_id = proposed_run_id
-        request = _build_request(
-            command,
-            request_id=self._request_id_factory(),
-            requested_at=self._clock(),
-        )
         base_details = {
             "request_id": request.request_id,
             "project_type": request.project_type.value,
+            "analysis_scope": request.analysis_scope.value,
             "requested_at": request.requested_at.isoformat(),
+            "poi_evidence_snapshot_id": command.poi_evidence_snapshot_id,
+            "poi_evidence_snapshot_reused": False,
         }
+        if supervisor_session_id is not None:
+            base_details["supervisor_session_id"] = (
+                _normalize_supervisor_session_id(supervisor_session_id)
+            )
         state = self._store.run_states.update(
             run_id,
             RunStatus.QUEUED,
@@ -269,6 +291,10 @@ class SiteSelectionRunService:
             raise SiteSelectionRunStateInconsistentError(
                 "排队运行的项目类型与任务载荷不一致"
             )
+        if state.details.get("analysis_scope") != command.analysis_scope.value:
+            raise SiteSelectionRunStateInconsistentError(
+                "排队运行的分析范围与任务载荷不一致"
+            )
 
         run_started_at = self._monotonic()
         traces: list[RunStageTrace] = []
@@ -293,6 +319,11 @@ class SiteSelectionRunService:
             command,
             request_id=request_id,
             requested_at=requested_at,
+        )
+        workflow_dependencies = self._dependencies_for(
+            command,
+            request,
+            runtime,
         )
         base_details = dict(state.details)
         running = self._store.run_states.transition(
@@ -323,7 +354,7 @@ class SiteSelectionRunService:
                     self._workflow_runner(
                         request,
                         runtime.datasets,
-                        runtime.dependencies,
+                        workflow_dependencies,
                     )
                 ),
                 traces,
@@ -361,6 +392,10 @@ class SiteSelectionRunService:
         details = {
             **base_details,
             "analysis": analysis.model_dump(mode="json"),
+            "poi_evidence_snapshot_reused": (
+                analysis.status is AnalysisStatus.COMPLETED
+                and _analysis_reused_poi_snapshot(analysis)
+            ),
         }
         terminal = self._externally_terminated(run_id)
         if terminal is not None:
@@ -697,6 +732,33 @@ class SiteSelectionRunService:
             )
         return runtime
 
+    def _dependencies_for(
+        self,
+        command: SiteSelectionAnalysisCreate,
+        request: ProjectRequest,
+        runtime: SiteSelectionRuntime,
+    ) -> SiteSelectionWorkflowDependencies:
+        snapshot_id = command.poi_evidence_snapshot_id
+        if snapshot_id is None:
+            return runtime.dependencies
+        snapshot = self._store.get_candidate_discovery_snapshot(snapshot_id)
+        if snapshot is None:
+            raise CandidateDiscoverySnapshotNotFoundError(
+                f"候选发现证据快照不存在或已过期：{snapshot_id}"
+            )
+        validate_snapshot_selection(
+            snapshot,
+            command.project_type,
+            request.candidate_parcels,
+        )
+        return replace(
+            runtime.dependencies,
+            poi_gateway=SnapshotReusingPOIGateway(
+                snapshot,
+                fallback=runtime.dependencies.poi_gateway,
+            ),
+        )
+
     def _append_event(
         self,
         run_id: str,
@@ -757,7 +819,13 @@ class UnconfiguredSiteSelectionRunService:
             "选址运行服务尚未配置 Redis 运行时存储"
         )
 
-    def create_run(self, command, *, idempotency_key=None):
+    def create_run(
+        self,
+        command,
+        *,
+        idempotency_key=None,
+        supervisor_session_id=None,
+    ):
         return self._unavailable()
 
     def get_run(self, run_id):
@@ -788,10 +856,19 @@ def _build_request(
     return ProjectRequest(
         request_id=request_id,
         project_type=command.project_type,
+        analysis_scope=command.analysis_scope,
         candidate_parcels=[
             parcel.to_domain() for parcel in command.candidate_parcels
         ],
         requested_at=requested_at,
+    )
+
+
+def _analysis_reused_poi_snapshot(analysis: AgentState) -> bool:
+    return any(
+        feature_set.source.evidence_reused
+        for result in analysis.results
+        for feature_set in result.poi_evidence.feature_sets
     )
 
 
@@ -821,6 +898,17 @@ def _command_fingerprint(command: SiteSelectionAnalysisCreate) -> str:
         separators=(",", ":"),
     )
     return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _normalize_supervisor_session_id(value: str) -> str:
+    normalized = value.strip()
+    if not normalized or len(normalized) > 200:
+        raise ValueError("Supervisor session_id 长度必须在 1 到 200 之间")
+    if _SAFE_SUPERVISOR_SESSION_ID.fullmatch(normalized) is None:
+        raise ValueError(
+            "Supervisor session_id 只能包含字母、数字、点、下划线和连字符"
+        )
+    return normalized
 
 
 def _stage_trace(

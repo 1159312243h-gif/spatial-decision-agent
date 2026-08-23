@@ -1,0 +1,48 @@
+{
+  "version": "demo-region-catalog-2026.08",
+  "is_fixture": true,
+  "entries": [
+    {
+      "name": "上海市徐汇区",
+      "aliases": ["徐汇", "徐汇区"],
+      "administrative_level": "district",
+      "center_longitude": 121.4365,
+      "center_latitude": 31.1885
+    },
+    {
+      "name": "上海市长宁区",
+      "aliases": ["长宁", "长宁区"],
+      "administrative_level": "district",
+      "center_longitude": 121.4246,
+      "center_latitude": 31.2204
+    },
+    {
+      "name": "上海市静安区",
+      "aliases": ["静安", "静安区"],
+      "administrative_level": "district",
+      "center_longitude": 121.4594,
+      "center_latitude": 31.2290
+    },
+    {
+      "name": "上海市闵行区",
+      "aliases": ["闵行", "闵行区"],
+      "administrative_level": "district",
+      "center_longitude": 121.3817,
+      "center_latitude": 31.1128
+    },
+    {
+      "name": "上海市宝山区",
+      "aliases": ["宝山", "宝山区"],
+      "administrative_level": "district",
+      "center_longitude": 121.4896,
+      "center_latitude": 31.4055
+    },
+    {
+      "name": "上海市浦东新区",
+      "aliases": ["浦东", "浦东新区"],
+      "administrative_level": "district",
+      "center_longitude": 121.5447,
+      "center_latitude": 31.2215
+    }
+  ]
+}

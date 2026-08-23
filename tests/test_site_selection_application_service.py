@@ -13,12 +13,17 @@ from app.services.site_selection_service import (
     UnconfiguredSiteSelectionRuntimeProvider,
 )
 from practice.site_selection import (
+    CandidateDiscoverySnapshotNotFoundError,
     DatasetManifest,
     DatasetSource,
+    POIQuery,
     ProjectIntakeSkill,
     ProjectType,
     SiteSelectionWorkflowDependencies,
+    build_candidate_discovery_poi_snapshot,
 )
+from tests.test_evidence_snapshot import broad_feature_set
+from tests.test_site_selection_workflow import dependencies
 
 
 NOW = datetime(2026, 8, 18, 23, 59, tzinfo=timezone.utc)
@@ -103,6 +108,99 @@ def test_service_builds_domain_request_and_invokes_workflow() -> None:
     assert datasets == tuple(configured_runtime.datasets)
     assert dependencies is configured_runtime.dependencies
     assert state.request.request_id == "analysis-fixed-001"
+
+
+def test_service_reuses_discovery_snapshot_without_calling_live_gateway() -> None:
+    class RaisingGateway:
+        def search(self, query):
+            raise AssertionError(f"unexpected live POI query: {query.group_key}")
+
+    class SnapshotStore:
+        def __init__(self, frozen):
+            self.frozen = frozen
+
+        def get_candidate_discovery_snapshot(self, snapshot_id):
+            return self.frozen if snapshot_id == self.frozen.snapshot_id else None
+
+    analysis_command = command().model_copy(
+        update={"poi_evidence_snapshot_id": "poi-snapshot-analysis-001"}
+    )
+    parcel = analysis_command.candidate_parcels[0].to_domain()
+    broad = broad_feature_set().model_copy(
+        update={
+            "query": broad_feature_set().query.model_copy(
+                update={"group_key": "public_transit"}
+            )
+        }
+    )
+    frozen = build_candidate_discovery_poi_snapshot(
+        discovery_request_id="discover-analysis-001",
+        project_type=ProjectType.SHOPPING_MALL,
+        created_at=NOW,
+        candidates=[parcel],
+        feature_sets=[broad],
+        snapshot_id="poi-snapshot-analysis-001",
+    )
+    configured_dependencies = dependencies(active_poi_gateway=RaisingGateway())
+    configured_runtime = SiteSelectionRuntime(
+        project_type=ProjectType.SHOPPING_MALL,
+        datasets=[manifest()],
+        dependencies=configured_dependencies,
+    )
+    captured = []
+
+    def runner(request, datasets, workflow_dependencies):
+        del datasets
+        captured.append(
+            workflow_dependencies.poi_gateway.search(
+                POIQuery(
+                    query_id="formal-public-transit",
+                    parcel_id=parcel.parcel_id,
+                    group_key="public_transit",
+                    longitude=parcel.longitude,
+                    latitude=parcel.latitude,
+                    categories=["公交站"],
+                    radius_m=200,
+                    limit=100,
+                )
+            )
+        )
+        return ProjectIntakeSkill().run(request)
+
+    service = SiteSelectionAnalysisService(
+        SiteSelectionRuntimeRegistry(
+            {ProjectType.SHOPPING_MALL: configured_runtime}
+        ),
+        snapshot_store=SnapshotStore(frozen),
+        workflow_runner=runner,
+        clock=lambda: NOW,
+        request_id_factory=lambda: "analysis-fixed-snapshot",
+    )
+
+    service.analyze(analysis_command)
+
+    assert captured[0].source.evidence_snapshot_id == frozen.snapshot_id
+    assert captured[0].source.evidence_reused is True
+
+
+def test_service_fails_closed_when_discovery_snapshot_is_missing() -> None:
+    class EmptySnapshotStore:
+        def get_candidate_discovery_snapshot(self, snapshot_id):
+            return None
+
+    service = SiteSelectionAnalysisService(
+        RecordingProvider(runtime()),
+        snapshot_store=EmptySnapshotStore(),
+    )
+    analysis_command = command().model_copy(
+        update={"poi_evidence_snapshot_id": "expired-snapshot"}
+    )
+
+    with pytest.raises(
+        CandidateDiscoverySnapshotNotFoundError,
+        match="不存在或已过期",
+    ):
+        service.analyze(analysis_command)
 
 
 def test_runtime_copies_dataset_sequence_to_immutable_tuple() -> None:
