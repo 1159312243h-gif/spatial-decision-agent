@@ -1,5 +1,5 @@
 {
-  "report_id": "site-selection-day26-local-fixture",
+  "report_id": "site-selection-local-fixture",
   "generated_at": "2026-08-20T07:40:44.379263Z",
   "environment": {
     "python": "3.12.13",
@@ -55,7 +55,7 @@
       }
     },
     {
-      "metric": "day26_frozen_suite",
+      "metric": "frozen_suite",
       "samples": 7,
       "warmup_runs": 2,
       "median_ms": 196.132,
