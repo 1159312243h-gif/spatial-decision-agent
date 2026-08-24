@@ -1,4 +1,4 @@
-# 2026-08-13 Function Calling 学习笔记
+# Function Calling 学习笔记
 
 ## 1. Function Calling 是什么
 
