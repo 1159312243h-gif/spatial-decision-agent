@@ -1,7 +1,6 @@
 {
-  "suite_id": "site-selection-day26",
-  "version": "2026.08.26.1",
-  "frozen_at": "2026-08-26T12:00:00Z",
+  "suite_id": "site-selection",
+  "version": "2026.01",
   "fixture_versions": {
     "poi": "fixture-rich-v1",
     "policy": "fixture-2026.08.1",
