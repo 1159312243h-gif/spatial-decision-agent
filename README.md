@@ -97,10 +97,10 @@ data/fixtures/                合成 POI、政策、规则和空间图层
 deploy/                       PostGIS 初始化与迁移
 scripts/                      迁移、Smoke、MCP、评测和性能脚本
 workbench/                    Streamlit 人工操作台
-evals/                        Day 26 冻结案例、协议与本地结果
+evals/                        冻结案例、协议与本地结果
 docs/                         架构、数据字典、性能和 Bad Cases
 tests/                        单元、集成、容器契约和端到端测试
-notes/                        按日期记录的学习与实现说明
+notes/                        记录的学习与实现说明
 ```
 
 ## 本地环境
@@ -189,7 +189,7 @@ python .\scripts\smoke_land_use_provider.py `
   --project-type coffee_shop
 ```
 
-2026-08-22 在该上海示例范围的真实探测返回 181 个质心位于边界内的 OSM 商业/零售用地或商业建筑多边形。该数字只证明当次公开数据有覆盖，不代表法定用地完整率。查询成功结果按范围、项目类型和 Provider 版本写入 Redis，默认 TTL 为 1 小时；网络失败和错误响应不缓存。若 Overpass 不可用，`strict` 请求关闭失败，其他模式按既有代理/市场策略降级，并继续把用地合规标记为待核验。
+在该上海示例范围的真实探测返回 181 个质心位于边界内的 OSM 商业/零售用地或商业建筑多边形。该数字只证明当次公开数据有覆盖，不代表法定用地完整率。查询成功结果按范围、项目类型和 Provider 版本写入 Redis，默认 TTL 为 1 小时；网络失败和错误响应不缓存。若 Overpass 不可用，`strict` 请求关闭失败，其他模式按既有代理/市场策略降级，并继续把用地合规标记为待核验。
 
 取得自然资源或规划部门授权图层后，可先导入 PostGIS：
 
