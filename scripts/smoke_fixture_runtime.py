@@ -140,7 +140,7 @@ def main() -> int:
         statuses = smoke_api(api_url)
         asyncio.run(smoke_mcp(mcp_url))
     except FixtureSmokeError as exc:
-        print(f"Day24 fixture smoke FAILED: {exc}")
+        print(f"Fixture smoke FAILED: {exc}")
         return 1
     except Exception as exc:
         print(
