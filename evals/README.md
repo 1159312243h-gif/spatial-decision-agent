@@ -1,6 +1,6 @@
-# Day 26 冻结评测
+# 冻结评测
 
-`day26_cases.json` 是版本化、可审计的 24 案例清单。评测只使用仓库内合成 Fixture，不调用在线 POI，也不把实时数量、网络延迟或 LLM 文本写成固定期望。
+`cases.json` 是版本化、可审计的 24 案例清单。评测只使用仓库内合成 Fixture，不调用在线 POI，也不把实时数量、网络延迟或 LLM 文本写成固定期望。
 
 类别分布：
 
@@ -16,7 +16,7 @@
 运行：
 
 ```powershell
-python .\scripts\run_day26_evaluations.py
+python .\scripts\run_evaluations.py
 ```
 
 评测通过条件是 `failed=0`。每条 `expected` 必须是 `actual` 的结构化子集，目的是冻结关键行为，同时允许实际结果增加非破坏性审计字段。
@@ -25,7 +25,7 @@ python .\scripts\run_day26_evaluations.py
 
 结果目录：
 
-- `results/day26-summary.json`：功能评测结果；
-- `results/day26-performance.json`：本机 Fixture 性能记录。
+- `results/summary.json`：功能评测结果；
+- `results/performance.json`：本机 Fixture 性能记录。
 
 结果包含运行环境和生成时间，允许在不同机器重新生成，不作为源码中的跨机器固定值。
