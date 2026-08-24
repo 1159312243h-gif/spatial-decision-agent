@@ -33,7 +33,7 @@ def main() -> int:
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
-    print("Day26 local fixture performance (not a production benchmark):")
+    print("Local fixture performance (not a production benchmark):")
     for item in report.measurements:
         print(
             f"- {item.metric}: median={item.median_ms:.3f}ms "
