@@ -1,7 +1,5 @@
 # Tool、Skill 与 Function Calling 学习笔记
 
-> 日期：2026-08-15
->
 > 项目：建设项目选址与国土空间合规审查 Agent
 >
 > 学习目标：理解 Tool、Skill、Function Calling 的职责、关系和工程边界，并能结合当前代码进行解释。
