@@ -60,12 +60,12 @@ queued -> running -> completed
 
 当前独立测试区已通过 Python 语法编译。完整 pytest、RQ 真实 Redis Worker 和 Docker Compose 冒烟需要将增量复制到主项目、安装 `rq>=2,<3` 后执行，结果未在本说明中预设。
 
-真实链路使用 `python .\scripts\smoke_day27_async_runtime.py` 验证 HTTP 202、异步事件链和共享 DOCX 报告。原 Day 24 Smoke 已兼容 `queued/running` 轮询。
+真实链路使用 `python .\scripts\smoke_async_runtime.py` 验证 HTTP 202、异步事件链和共享 DOCX 报告。Fixture Smoke 已兼容 `queued/running` 轮询。
 
 ### RQ 2.11 真实入队兼容修复
 
 第一次 Docker Smoke 已到达 API，但 Worker 没有收到任务。Redis 中对应运行记录为 `queue_error_type=TypeError`，事件链为 `created -> enqueued -> failed`。根因是 RQ 2.11 的 `Queue.enqueue_call()` 使用参数名 `timeout`，适配器误传了不存在的 `job_timeout`。
 
-适配器现已改用 `timeout`，并增加直接约束真实 RQ 适配器调用参数的回归测试，避免 Fake Queue 掩盖第三方 API 签名漂移。Day 24 和 Day 27 Smoke 也会输出阶段、HTTP 状态、run ID、终态、脱敏运行错误与事件类型，不输出凭据或原始任务载荷。
+适配器现已改用 `timeout`，并增加直接约束真实 RQ 适配器调用参数的回归测试，避免 Fake Queue 掩盖第三方 API 签名漂移。Fixture 与异步 Smoke 也会输出阶段、HTTP 状态、run ID、终态、脱敏运行错误与事件类型，不输出凭据或原始任务载荷。
 
-修复后独立测试区通过 16 个针对性测试和 451 个完整测试。复制覆盖包并重建 API/Worker 后，Day 27 真实异步 Smoke 已通过：`events=4`，共享 DOCX 报告可读取；Day 24 回归 Smoke 也通过 2 类项目、4 个候选、2 份报告与 6 个 MCP 工具验证。
+修复后独立测试区通过 16 个针对性测试和 451 个完整测试。复制覆盖包并重建 API/Worker 后，真实异步 Smoke 已通过：`events=4`，共享 DOCX 报告可读取；Fixture 回归 Smoke 也通过 2 类项目、4 个候选、2 份报告与 6 个 MCP 工具验证。

@@ -84,7 +84,7 @@ Streamlit 工作台会在 `pending` 时显示复核警告和“确认已阅”�
 
 ## 端到端场景
 
-新增 Day 25 端到端测试覆盖：
+新增可靠性端到端测试覆盖：
 
 1. 正常运行完成且不需要人工复核。
 2. 政策规则命中后运行完成，但人工复核为 `pending`。
@@ -95,7 +95,7 @@ Streamlit 工作台会在 `pending` 时显示复核警告和“确认已阅”�
 
 ## 验证结果
 
-- Day 25 定向测试：`45 passed`。
+- 可靠性定向测试：`45 passed`。
 - 项目 `.venv` 完整回归：`425 passed in 7.23s`。
 - Compose 已重新构建 API、MCP 和 Workbench 镜像；PostGIS、Redis、API、MCP 与 Workbench 均成功启动。
 - 容器 smoke：`project_types=2, candidates=4, reports=2, mcp_tools=6`，两份解释均为 `generated`。

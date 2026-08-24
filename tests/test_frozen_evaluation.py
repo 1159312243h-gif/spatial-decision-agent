@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from practice.site_selection.evaluation import (
-    Day26EvaluationRunner,
+    FrozenEvaluationRunner,
     EvaluationSuite,
     load_evaluation_suite,
     write_evaluation_summary,
@@ -10,7 +10,7 @@ from practice.site_selection.poi_adapters import haversine_distance_m
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
-SUITE_PATH = PROJECT_ROOT / "evals" / "day26_cases.json"
+SUITE_PATH = PROJECT_ROOT / "evals" / "cases.json"
 
 
 def test_frozen_suite_has_24_unique_cases_and_four_poi_failures() -> None:
@@ -34,7 +34,7 @@ def test_poi_category_fixture_expectation_matches_two_kilometre_radius() -> None
 def test_all_frozen_cases_pass_without_live_network() -> None:
     suite = load_evaluation_suite(SUITE_PATH)
 
-    summary = Day26EvaluationRunner(
+    summary = FrozenEvaluationRunner(
         PROJECT_ROOT / "data" / "fixtures"
     ).run_suite(suite)
 
@@ -46,7 +46,7 @@ def test_all_frozen_cases_pass_without_live_network() -> None:
 
 def test_summary_is_machine_readable_and_preserves_provenance(tmp_path) -> None:
     suite = load_evaluation_suite(SUITE_PATH)
-    summary = Day26EvaluationRunner(
+    summary = FrozenEvaluationRunner(
         PROJECT_ROOT / "data" / "fixtures"
     ).run_suite(suite)
     output = tmp_path / "summary.json"
@@ -54,6 +54,6 @@ def test_summary_is_machine_readable_and_preserves_provenance(tmp_path) -> None:
     write_evaluation_summary(summary, output)
     reloaded = output.read_text(encoding="utf-8")
 
-    assert '"suite_id": "site-selection-day26"' in reloaded
+    assert '"suite_id": "site-selection"' in reloaded
     assert '"network": "disabled by evaluation design"' in reloaded
     assert '"failed": 0' in reloaded

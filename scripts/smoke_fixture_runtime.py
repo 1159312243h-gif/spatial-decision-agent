@@ -70,7 +70,7 @@ def smoke_api(api_url: str) -> list[str]:
             response = client.post(
                 "/site-selection/runs",
                 json=payload,
-                headers={"Idempotency-Key": f"day24-smoke-{uuid4()}"},
+                headers={"Idempotency-Key": f"fixture-smoke-{uuid4()}"},
             )
             response.raise_for_status()
             run = wait_for_run(client, response.json())
@@ -144,12 +144,12 @@ def main() -> int:
         return 1
     except Exception as exc:
         print(
-            "Day24 fixture smoke FAILED: "
+            "Fixture smoke FAILED: "
             f"stage=unexpected; error_type={type(exc).__name__}"
         )
         return 1
     print(
-        f"Day24 fixture smoke OK: project_types={len(PAYLOADS)}, "
+        f"Fixture smoke OK: project_types={len(PAYLOADS)}, "
         f"candidates={EXPECTED_CANDIDATE_COUNT}, reports={len(statuses)}, "
         "mcp_tools=6, "
         "explanation_statuses="

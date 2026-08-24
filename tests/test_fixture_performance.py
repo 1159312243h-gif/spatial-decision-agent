@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from practice.site_selection.performance import measure_day26_performance
+from practice.site_selection.performance import measure_fixture_performance
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
 
 
 def test_performance_report_is_versioned_and_covers_gis_poi_rag_and_suite() -> None:
-    report = measure_day26_performance(
+    report = measure_fixture_performance(
         PROJECT_ROOT,
         samples=3,
         warmup_runs=0,
@@ -22,7 +22,7 @@ def test_performance_report_is_versioned_and_covers_gis_poi_rag_and_suite() -> N
         "gis_geopandas_area_intersection_distance",
         "poi_fixture_search",
         "rag_hybrid_retrieval",
-        "day26_frozen_suite",
+        "frozen_evaluation_suite",
     }
     assert all(item.samples == 3 for item in report.measurements)
     assert "not a production benchmark" in report.disclaimer

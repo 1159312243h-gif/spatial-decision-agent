@@ -136,8 +136,8 @@ docker desktop start
 docker compose up -d --build --wait
 docker compose ps
 python .\scripts\apply_postgis_migrations.py
-python .\scripts\smoke_day24_fixture_runtime.py
-python .\scripts\smoke_day27_async_runtime.py
+python .\scripts\smoke_fixture_runtime.py
+python .\scripts\smoke_async_runtime.py
 ```
 
 Compose 默认以异步模式运行。`POST /site-selection/runs` 返回 `202 Accepted` 和 `run_id` 只表示任务已入队；Workbench 每 2 秒自动读取 `queued/running/completed` 状态，进入终态后自动展示结果，也可以取消尚未结束的任务。`POST /site-selection/analyses` 仍保留为显式同步分析接口。
@@ -249,18 +249,18 @@ python -m pytest -q --basetemp .\.venv\pytest-tmp
 运行冻结评测：
 
 ```powershell
-python .\scripts\run_day26_evaluations.py
+python .\scripts\run_evaluations.py
 ```
 
-输出写入 `evals/results/day26-summary.json`。脚本只使用本地合成 Fixture，不访问在线 POI。
+输出写入 `evals/results/summary.json`。脚本只使用本地合成 Fixture，不访问在线 POI。
 
 记录本机性能：
 
 ```powershell
-python .\scripts\benchmark_day26.py --samples 7 --warmup-runs 2
+python .\scripts\benchmark.py --samples 7 --warmup-runs 2
 ```
 
-输出写入 `evals/results/day26-performance.json`。这些结果仅表示当前机器上的 Fixture 基线，不是生产容量、在线服务 SLA 或真实 POI 覆盖率。
+输出写入 `evals/results/performance.json`。这些结果仅表示当前机器上的 Fixture 基线，不是生产容量、在线服务 SLA 或真实 POI 覆盖率。
 
 ## Fixture 与真实数据
 

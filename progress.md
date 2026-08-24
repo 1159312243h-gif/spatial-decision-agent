@@ -1091,7 +1091,7 @@
 - 全量回归 `373 passed`；报告可访问性审计高/中/低问题均为 0。
 - PostGIS 查询一致性真实烟测已通过。
 - Redis 运行态真实烟测已通过；当前环境缺少 LibreOffice，Word 报告尚未完成 PNG 视觉验收。
-### 2026-08-25：运行可靠性、人工复核与阶段可观测性
+### 运行可靠性、人工复核与阶段可观测性
 
 - 新增结构化运行阶段 trace，覆盖 workflow、human_review、explanation、report 和 total，仅保留耗时、状态与脱敏异常类型。
 - 工作流返回值重新经过 `AgentState` 校验；非法返回、缺失 Evidence Review 或 blocked 审查均写入显式失败状态，不残留 running。
@@ -1102,12 +1102,12 @@
 - 在线 POI 不可用时可沿用显式 Fixture 回退，并通过 `fallback_from/fallback_reason` 和 `poi_fixture_fallback` warning 留痕。
 - Streamlit 工作台增加待复核提示、确认已阅操作、非批准边界说明和阶段耗时表。
 - 新增四类端到端可靠性场景以及阻断审查、非法工作流返回、幂等确认、熔断恢复等测试。
-- Day 25 定向测试 `45 passed`，主仓库项目 `.venv` 完整回归 `425 passed in 7.23s`。
+- 可靠性定向测试 `45 passed`，主仓库项目 `.venv` 完整回归 `425 passed in 7.23s`。
 - Compose 五服务启动成功；双项目类型、四候选地、两报告和六 MCP 工具 smoke 通过。
 - 浏览器实测待复核提示、五阶段 trace、确认已阅和“非合规批准”边界均正常。
 - 当前未自动提交。
 - Fixture POI 仍只用于稳定演示，不作为现实选址样本；后续继续推进真实 POI 覆盖与数据质量治理。
-### 2026-08-26：冻结评测、性能基线与交付文档
+### 冻结评测、性能基线与交付文档
 
 - 冻结 24 条选址评测，覆盖 4 条前置检查、6 条空间校验、3 条 Fixture POI、4 条 POI 故障、3 条政策 RAG 和 4 条完整工作流。
 - 增加批量评测器与机器可读 JSON 结果，记录期望、实际、耗时和异常类型。
@@ -1129,11 +1129,11 @@
 - Workbench 支持 queued/running 展示、显式刷新和取消，未完成时不访问空 analysis。
 - API 与 Worker 共享报告卷；同步模式保留给测试和显式本地调用。
 - 新增异步队列、Worker、API、Workbench、Redis 状态与 Compose 契约测试。
-- 原 Day 24 Smoke 兼容异步轮询；新增 Day 27 Smoke 验证 HTTP 202、完整队列事件链和共享报告。
+- Fixture Smoke 兼容异步轮询；异步 Smoke 验证 HTTP 202、完整队列事件链和共享报告。
 - RQ 2.11 真实入队发现并修复 `enqueue_call(job_timeout=...)` 参数错误，改为正式参数 `timeout=...`，并补充回归测试与安全 Smoke 诊断。
 - 针对性测试 16 项通过；独立测试区完整 pytest 451 项通过。
-- Docker Compose API、Worker、PostGIS、Redis 均健康；Day 27 真实异步 Smoke 通过，事件链 4 个事件齐全并成功读取 DOCX 报告。
-- Day 24 回归 Smoke 通过：2 类项目、4 个候选、2 份报告、6 个 MCP 工具，解释状态均为 `generated`。
+- Docker Compose API、Worker、PostGIS、Redis 均健康；真实异步 Smoke 通过，事件链 4 个事件齐全并成功读取 DOCX 报告。
+- Fixture 回归 Smoke 通过：2 类项目、4 个候选、2 份报告、6 个 MCP 工具，解释状态均为 `generated`。
 
 ### 丰富 Fixture 数据与多候选比较
 

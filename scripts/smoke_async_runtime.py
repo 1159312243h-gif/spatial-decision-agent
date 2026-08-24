@@ -49,7 +49,7 @@ def smoke_async_runtime(api_url: str) -> tuple[str, int]:
         response = client.post(
             "/site-selection/runs",
             json=PAYLOADS["shopping_mall"],
-            headers={"Idempotency-Key": f"day27-smoke-{uuid4()}"},
+            headers={"Idempotency-Key": f"async-smoke-{uuid4()}"},
         )
         if response.status_code != 202:
             raise AsyncSmokeError(

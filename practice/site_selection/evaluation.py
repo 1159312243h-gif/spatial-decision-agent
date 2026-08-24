@@ -115,7 +115,7 @@ class EvaluationSummary(BaseModel):
 CaseHandler = Callable[[EvaluationCase], dict[str, Any]]
 
 
-class Day26EvaluationRunner:
+class FrozenEvaluationRunner:
     """Run frozen deterministic evaluations without calling live providers."""
 
     def __init__(self, fixture_root: str | Path) -> None:
@@ -344,7 +344,7 @@ class Day26EvaluationRunner:
             _manifest(constraint_dataset_id, ["constraint_id", "level"]),
         ]
         request = ProjectRequest(
-            request_id=f"day26-{case.case_id.lower()}",
+            request_id=f"evaluation-{case.case_id.lower()}",
             project_type=project_type,
             candidate_parcels=[
                 CandidateParcel(
@@ -354,7 +354,7 @@ class Day26EvaluationRunner:
                     geometry_dataset_id=candidate_dataset_id,
                 )
             ],
-            requested_at=datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc),
+            requested_at=datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc),
         )
         result = run_parallel_site_selection_workflow(
             request,
@@ -407,9 +407,9 @@ def _contains(expected: Any, actual: Any) -> bool:
 
 def _poi_query(payload: Mapping[str, Any]) -> POIQuery:
     return POIQuery(
-        query_id="day26-evaluation",
+        query_id="frozen-evaluation",
         parcel_id="EVAL-A01",
-        group_key="day26",
+        group_key="evaluation",
         longitude=float(payload.get("longitude", 121.47)),
         latitude=float(payload.get("latitude", 31.23)),
         categories=list(payload.get("categories", ["地铁站"])),
@@ -461,8 +461,8 @@ def _amap_payload() -> dict[str, Any]:
         "infocode": "10000",
         "pois": [
             {
-                "id": "DAY26-AMAP-01",
-                "name": "Day26测试地铁站",
+                "id": "EVAL-AMAP-01",
+                "name": "评测用测试地铁站",
                 "location": "121.471000,31.230000",
                 "type": "交通设施服务;地铁站",
                 "typecode": "150500",
@@ -482,7 +482,7 @@ def _candidate_frame(parcel_id: str) -> gpd.GeoDataFrame:
 
 def _constraint_frame(point: Point) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(
-        {"constraint_id": ["DAY26-C01"], "level": ["fixture-review"]},
+        {"constraint_id": ["EVAL-C01"], "level": ["fixture-review"]},
         geometry=[point],
         crs="EPSG:32651",
     )
@@ -494,10 +494,10 @@ def _manifest(dataset_id: str, required_fields: list[str]) -> DatasetManifest:
         name=dataset_id,
         source=DatasetSource.POSTGIS,
         location=dataset_id,
-        version="day26-fixture-1",
+        version="evaluation-fixture-v1",
         crs="EPSG:32651",
         required_fields=required_fields,
-        updated_at=datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc),
     )
 
 
@@ -536,13 +536,13 @@ def _workflow_dependencies(
             )
         )
     policy = PolicyReference(
-        policy_id=f"DAY26-{project_type.value}-POLICY",
-        title="Day26 合成评测规则",
+        policy_id=f"EVAL-{project_type.value}-POLICY",
+        title="合成评测规则",
         issuing_authority="测试机构",
         clause="第一条（合成测试）",
         version="1.0",
         jurisdiction="测试行政区",
-        source_uri="fixture://day26/policy",
+        source_uri="fixture://evaluation/policy",
     )
     constraint_id = f"{project_type.value}-constraint"
     return SiteSelectionWorkflowDependencies(
@@ -550,8 +550,8 @@ def _workflow_dependencies(
             {
                 parcel_id: [
                     POIRecord(
-                        poi_id="DAY26-POI-01",
-                        name="Day26 合成 POI",
+                        poi_id="EVAL-POI-01",
+                        name="合成评测 POI",
                         category=profile.poi_groups[0].categories[0],
                         longitude=121.471,
                         latitude=31.231,
@@ -559,18 +559,18 @@ def _workflow_dependencies(
                     )
                 ]
             },
-            clock=lambda: datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc),
+            clock=lambda: datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc),
         ),
         poi_scoring_config=POIScoringConfig(
             project_type=project_type,
-            version="day26-eval-1",
+            version="evaluation-v1",
             groups=scoring_groups,
         ),
         spatial_gateway=MockSpatialDatasetGateway(datasets),
         constraint_specs=[
             ConstraintLayerSpec(
                 constraint_id=constraint_id,
-                display_name="Day26 合成约束",
+                display_name="合成评测约束",
                 layer_type=(
                     ConstraintLayerType.ECOLOGICAL_PROTECTION
                     if project_type is ProjectType.SHOPPING_MALL
@@ -584,8 +584,8 @@ def _workflow_dependencies(
         ],
         rules=[
             RuleDefinition(
-                rule_id=f"DAY26-{project_type.value}-RULE",
-                name="Day26 合成评测规则",
+                rule_id=f"EVAL-{project_type.value}-RULE",
+                name="合成评测规则",
                 version="1.0",
                 applicable_project_types=[project_type],
                 constraint_id=constraint_id,

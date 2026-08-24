@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from shapely.geometry import Point, Polygon
 
 from .domain import ProjectType
-from .evaluation import Day26EvaluationRunner, load_evaluation_suite
+from .evaluation import FrozenEvaluationRunner, load_evaluation_suite
 from .poi import POIQuery
 from .poi_adapters import FixturePOIAdapter
 from .policy_rag import PolicyHybridRetriever, chunk_policy_documents, load_policy_corpus
@@ -32,7 +32,7 @@ class PerformanceMeasurement(BaseModel):
     input_summary: dict[str, Any]
 
 
-class Day26PerformanceReport(BaseModel):
+class FixturePerformanceReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     report_id: str
@@ -43,19 +43,19 @@ class Day26PerformanceReport(BaseModel):
     measurements: list[PerformanceMeasurement]
 
 
-def measure_day26_performance(
+def measure_fixture_performance(
     project_root: str | Path,
     *,
     samples: int = 7,
     warmup_runs: int = 2,
-) -> Day26PerformanceReport:
+) -> FixturePerformanceReport:
     if samples < 3:
         raise ValueError("performance samples must be at least 3")
     if warmup_runs < 0:
         raise ValueError("warmup runs cannot be negative")
     root = Path(project_root)
     fixture_root = root / "data" / "fixtures"
-    suite = load_evaluation_suite(root / "evals" / "day26_cases.json")
+    suite = load_evaluation_suite(root / "evals" / "cases.json")
 
     candidate = gpd.GeoDataFrame(
         {"parcel_id": ["PERF-A01"]},
@@ -76,7 +76,7 @@ def measure_day26_performance(
 
     poi_adapter = FixturePOIAdapter.from_json(fixture_root / "poi.json")
     poi_query = POIQuery(
-        query_id="day26-performance-poi",
+        query_id="fixture-performance-poi",
         parcel_id="PERF-A01",
         group_key="public_transit",
         longitude=121.47,
@@ -130,16 +130,16 @@ def measure_day26_performance(
             },
         ),
         _measure(
-            "day26_frozen_suite",
-            lambda: Day26EvaluationRunner(fixture_root).run_suite(suite),
+            "frozen_evaluation_suite",
+            lambda: FrozenEvaluationRunner(fixture_root).run_suite(suite),
             samples=samples,
             warmup_runs=warmup_runs,
             state="24 deterministic cases; no live providers",
             input_summary={"cases": len(suite.cases), "poi_failure_cases": 4},
         ),
     ]
-    return Day26PerformanceReport(
-        report_id="site-selection-day26-local-fixture",
+    return FixturePerformanceReport(
+        report_id="site-selection-local-fixture",
         generated_at=datetime.now(timezone.utc),
         environment={
             "python": platform.python_version(),

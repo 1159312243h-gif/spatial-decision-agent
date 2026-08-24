@@ -275,4 +275,4 @@ Supervisor checkpoint 表由官方 `langgraph-checkpoint-postgres` 的 `Postgres
 
 ## 7. 评测结果
 
-`evals/day26_cases.json` 冻结输入和关键期望字段。`day26-summary.json` 为每条案例记录 `case_id`、类别、场景、期望、实际、是否通过、耗时和异常类型。`day26-performance.json` 记录样本数、预热次数、中位数、最小/最大耗时、运行状态和输入规模。
+`evals/cases.json` 冻结输入和关键期望字段。`summary.json` 为每条案例记录 `case_id`、类别、场景、期望、实际、是否通过、耗时和异常类型。`performance.json` 记录样本数、预热次数、中位数、最小/最大耗时、运行状态和输入规模。

@@ -1,4 +1,4 @@
-from scripts.smoke_day24_fixture_runtime import (
+from scripts.smoke_fixture_runtime import (
     EXPECTED_CANDIDATE_COUNT,
     EXPECTED_MCP_TOOLS,
     PAYLOADS,
@@ -6,7 +6,7 @@ from scripts.smoke_day24_fixture_runtime import (
 )
 
 
-def test_day24_smoke_covers_all_project_types_and_rich_fixture_candidates() -> None:
+def test_fixture_smoke_covers_all_project_types_and_rich_fixture_candidates() -> None:
     assert set(PAYLOADS) == {
         "shopping_mall",
         "logistics_park",
@@ -25,7 +25,7 @@ def test_day24_smoke_covers_all_project_types_and_rich_fixture_candidates() -> N
     }
 
 
-def test_day24_safe_error_can_preserve_terminal_run_diagnostics() -> None:
+def test_fixture_safe_error_can_preserve_terminal_run_diagnostics() -> None:
     error = FixtureSmokeError(
         "stage=worker; project_type=shopping_mall; run_id=run-001; "
         "status=failed; run_error=选址任务入队失败：TypeError"

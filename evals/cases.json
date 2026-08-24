@@ -1,6 +1,7 @@
 {
   "suite_id": "site-selection",
-  "version": "2026.01",
+  "version": "1.0.0",
+  "frozen_at": "2026-08-24T12:00:00Z",
   "fixture_versions": {
     "poi": "fixture-rich-v1",
     "policy": "fixture-2026.08.1",
@@ -44,7 +45,7 @@
       "input": {
         "project_type": "shopping_mall",
         "candidate_parcels": [{"parcel_id": "A01", "longitude": 121.47, "latitude": 31.23, "area_hectares": 1.0, "geometry_dataset_id": "candidate-layer"}],
-        "datasets": [{"dataset_id": "candidate-layer", "name": "合成候选图层", "source": "postgis", "location": "candidate-layer", "version": "fixture-1", "crs": "EPSG:32651", "required_fields": ["parcel_id"], "updated_at": "2026-08-26T12:00:00Z"}]
+        "datasets": [{"dataset_id": "candidate-layer", "name": "合成候选图层", "source": "postgis", "location": "candidate-layer", "version": "fixture-1", "crs": "EPSG:32651", "required_fields": ["parcel_id"], "updated_at": "2026-08-24T12:00:00Z"}]
       },
       "expected": {"status": "ready", "project_type": "shopping_mall", "missing_fields": []}
     },

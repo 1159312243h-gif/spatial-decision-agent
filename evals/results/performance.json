@@ -55,7 +55,7 @@
       }
     },
     {
-      "metric": "frozen_suite",
+      "metric": "frozen_evaluation_suite",
       "samples": 7,
       "warmup_runs": 2,
       "median_ms": 196.132,

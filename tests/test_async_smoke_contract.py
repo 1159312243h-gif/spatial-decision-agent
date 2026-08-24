@@ -1,7 +1,7 @@
-from scripts.smoke_day27_async_runtime import AsyncSmokeError, REQUIRED_EVENTS
+from scripts.smoke_async_runtime import AsyncSmokeError, REQUIRED_EVENTS
 
 
-def test_day27_smoke_requires_the_complete_async_event_chain() -> None:
+def test_async_smoke_requires_the_complete_event_chain() -> None:
     assert REQUIRED_EVENTS == {
         "created",
         "enqueued",
@@ -10,7 +10,7 @@ def test_day27_smoke_requires_the_complete_async_event_chain() -> None:
     }
 
 
-def test_day27_smoke_error_preserves_safe_runtime_diagnostics() -> None:
+def test_async_smoke_error_preserves_safe_runtime_diagnostics() -> None:
     error = AsyncSmokeError(
         "worker",
         "async worker did not complete the analysis",

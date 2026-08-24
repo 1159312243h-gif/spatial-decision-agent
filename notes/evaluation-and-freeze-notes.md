@@ -6,7 +6,7 @@
 
 ## 完成内容
 
-- 外置 `evals/day26_cases.json`，冻结 24 条案例和三类 Fixture 版本。
+- 外置 `evals/cases.json`，冻结 24 条案例和三类 Fixture 版本。
 - 覆盖前置检查、空间校验、POI 正常/失败、RAG 和完整 LangGraph 工作流。
 - 四条 POI 故障案例分别验证 429 重试、熔断降级、格式错误不重试和熔断阻止额外 HTTP。
 - 新增批量评测器，逐条记录期望、实际、耗时和清洗后的异常类型。
@@ -29,9 +29,9 @@
 ## 复现命令
 
 ```powershell
-python .\scripts\run_day26_evaluations.py
-python .\scripts\benchmark_day26.py --samples 7 --warmup-runs 2
-python -m pytest -q --basetemp .\.venv\pytest-tmp-day26
+python .\scripts\run_evaluations.py
+python .\scripts\benchmark.py --samples 7 --warmup-runs 2
+python -m pytest -q --basetemp .\.venv\pytest-tmp-evaluation
 git --no-pager diff --check
 ```
 

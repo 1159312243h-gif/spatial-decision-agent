@@ -469,8 +469,8 @@ RAG 和规则引擎不是同一件事：RAG 用来找相关原文，规则引擎
 | `mcp_server.py` | `create_site_selection_mcp_server()` | 把内部 Tool Registry 包装成 MCP 2.0 Server |
 | `mcp_client.py` | `SiteSelectionMCPClient` | 校验服务端工具集合白名单，阻止未知工具，映射超时和错误 |
 | `reporting.py` | `generate_site_selection_report()` | 生成包含对比、GIS、POI、规则、来源和复核边界的 DOCX；截断时明确返回/可用数和下界声明 |
-| `evaluation.py` | `Day26EvaluationRunner` | 离线执行冻结案例，比较期望子集，记录实际、耗时和异常类型 |
-| `performance.py` | `measure_day26_performance()` | 在 Fixture 规模下测量 GIS、POI、RAG 和评测批次；不声称生产 SLA |
+| `evaluation.py` | `FrozenEvaluationRunner` | 离线执行冻结案例，比较期望子集，记录实际、耗时和异常类型 |
+| `performance.py` | `measure_fixture_performance()` | 在 Fixture 规模下测量 GIS、POI、RAG 和评测批次；不声称生产 SLA |
 | `workbench/app.py` | Streamlit 页面主体 | 自动轮询、编辑候选地、分层地图、POI 过滤、Agent 计划/轨迹/门禁、确认已阅和报告下载 |
 | `workbench/site_selection_client.py` | `SiteSelectionAPIClient`、`agent_plan_rows()`、`agent_trace_rows()` 等 | HTTP 调用、错误清洗、报告下载和候选/POI/Agent 展示数据整理 |
 
@@ -485,16 +485,16 @@ RAG 和规则引擎不是同一件事：RAG 用来找相关原文，规则引擎
 | `scripts/run_fixture_mcp_server.py` | `main()` | 检查 Fixture 模式和数据库，启动 Streamable HTTP MCP Server |
 | `scripts/run_site_selection_mcp.py` | `main()` | 较早的 MCP 本地启动入口，供工具开发调试 |
 | `scripts/generate_site_selection_report.py` | `main()` | 从受支持输入生成选址 DOCX 报告 |
-| `scripts/run_day26_evaluations.py` | `main()` | 运行 24 条冻结评测并写机器可读 JSON |
-| `scripts/benchmark_day26.py` | `main()` | 运行 Fixture 性能采样并写结果，不代表生产容量 |
+| `scripts/run_evaluations.py` | `main()` | 运行 24 条冻结评测并写机器可读 JSON |
+| `scripts/benchmark.py` | `main()` | 运行 Fixture 性能采样并写结果，不代表生产容量 |
 | `scripts/generate_rich_fixtures.py` | `build_payloads()`、`main()` | 从同一场景配置确定性生成候选、1,157 条 POI 和空间图层，防止多份 Fixture 漂移 |
 | `scripts/smoke_postgis_gateway.py` | `main()` | 用真实 PostGIS 临时空间表验证 Gateway |
 | `scripts/smoke_storage_repositories.py` | `main()` | 验证项目、图层、要素、POI 写读和去重 |
 | `scripts/smoke_spatial_query_parity.py` | `main()` | 比较 GeoPandas 和 PostGIS 面积/相交/距离语义 |
 | `scripts/smoke_redis_state.py` | `main()` | 验证 Redis namespace、状态和 TTL |
 | `scripts/smoke_site_selection_redis_runtime.py` | `main()` | 验证运行状态、事件、缓存和 Compose 密码加载 |
-| `scripts/smoke_day24_fixture_runtime.py` | `main()` | 验证四种 Profile、多候选、报告、六个 MCP 工具和异步轮询 |
-| `scripts/smoke_day27_async_runtime.py` | `main()` | 专门验证 HTTP 202、RQ Worker、完整事件链和共享 DOCX |
+| `scripts/smoke_fixture_runtime.py` | `main()` | 验证四种 Profile、多候选、报告、六个 MCP 工具和异步轮询 |
+| `scripts/smoke_async_runtime.py` | `main()` | 专门验证 HTTP 202、RQ Worker、完整事件链和共享 DOCX |
 
 ## 7. 数据文件和运行配置
 
@@ -628,10 +628,10 @@ RQ `job_timeout` 控制单任务上限。失败回调根据异常类型名是否
 | `test_site_selection_worker.py` | Worker 执行、超时回调、失败脱敏、终态保护 |
 | `test_site_selection_run_api.py` | HTTP 201/202/404/409/503 契约 |
 | `test_site_selection_workbench.py` | 自动轮询、地图层、POI 截断、Agent 计划/轨迹/门禁和展示转换 |
-| `test_day24_container_contract.py` | 六服务 Compose 契约 |
-| `test_day25_reliability_e2e.py` | 可靠性和人工复核端到端 |
-| `test_day26_evaluation.py` | 24 条冻结案例 |
-| `test_day27_smoke_contract.py` | 异步 Smoke 必须包含完整事件链 |
+| `test_container_contract.py` | 六服务 Compose 契约 |
+| `test_reliability_e2e.py` | 可靠性和人工复核端到端 |
+| `test_frozen_evaluation.py` | 24 条冻结案例 |
+| `test_async_smoke_contract.py` | 异步 Smoke 必须包含完整事件链 |
 | `test_supervisor_smoke_contract.py` | Supervisor 两阶段重启 Smoke 的请求顺序、非法确认与审计链 |
 
 真实运行还使用以下脚本：
@@ -639,8 +639,8 @@ RQ `job_timeout` 控制单任务上限。失败回调根据异常类型名是否
 - `smoke_storage_repositories.py`：真实 PostGIS 项目/图层/POI 写读和去重；
 - `smoke_redis_state.py`：真实 Redis namespace 与 TTL；
 - `smoke_spatial_query_parity.py`：GeoPandas/PostGIS 结果一致性；
-- `smoke_day24_fixture_runtime.py`：四种项目、多候选、报告和 MCP；
-- `smoke_day27_async_runtime.py`：HTTP 202、RQ Worker、事件链和共享报告；
+- `smoke_fixture_runtime.py`：四种项目、多候选、报告和 MCP；
+- `smoke_async_runtime.py`：HTTP 202、RQ Worker、事件链和共享报告；
 - `smoke_supervisor_runtime.py`：先创建并冻结 Supervisor 会话，再在 API 重启后恢复、拒绝非法候选、合法确认、轮询异步分析并核对七段成功审计事件。
 
 第 29 阶段叠加副本完成 `548 passed in 12.50s` 全量回归；加入第 30 节后当前基线为 `558 passed in 35.64s`。新增覆盖不追求测试数量，而是固定高风险语义：Agent 依赖不能被绕过、POI 上限不能冒充完整总量、合成来源不能冒充现实证据、竞品数量不能被错误地按“越多越好”评分、发现与分析不能使用两套漂移证据、过期或错配快照不能静默联网继续、人工确认不能选择发现报告外候选、queued 不能冒充 completed、Worker 与 GET 的重复完成不能重复推进 checkpoint，失败/取消/超时也不能被折叠成未知失败。
@@ -2786,7 +2786,7 @@ python -m pytest -q `
   .\tests\test_evidence_review.py `
   .\tests\test_site_selection_workbench.py `
   .\tests\test_site_selection_poi_provider.py `
-  .\tests\test_day24_container_contract.py
+  .\tests\test_container_contract.py
 
 docker compose up -d --build --force-recreate --wait api worker workbench
 ```
