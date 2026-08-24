@@ -34,12 +34,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     suite = load_evaluation_suite(args.suite)
-    summary = Day26EvaluationRunner(PROJECT_ROOT / "data" / "fixtures").run_suite(
+    summary = EvaluationRunner(PROJECT_ROOT / "data" / "fixtures").run_suite(
         suite
     )
     write_evaluation_summary(summary, args.output)
     print(
-        f"Day26 evaluations: passed={summary.passed}/{summary.total}, "
+        f"Evaluations: passed={summary.passed}/{summary.total}, "
         f"failed={summary.failed}, output={args.output}"
     )
     for result in summary.results:
