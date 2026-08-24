@@ -1,4 +1,4 @@
-# 2026-08-14 Transformer、Embedding 与 Attention 学习笔记
+# Transformer、Embedding 与 Attention 学习笔记
 
 ## 1. 今日学习目标
 
