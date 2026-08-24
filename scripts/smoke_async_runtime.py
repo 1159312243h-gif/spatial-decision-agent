@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import httpx
 
-from scripts.smoke_day24_fixture_runtime import PAYLOADS, wait_for_run
+from scripts.smoke_fixture_runtime import PAYLOADS, wait_for_run
 
 
 REQUIRED_EVENTS = {"created", "enqueued", "started", "completed"}
@@ -142,16 +142,16 @@ def main() -> int:
     try:
         run_id, event_count = smoke_async_runtime(api_url)
     except AsyncSmokeError as exc:
-        print(f"Day27 async smoke FAILED: {exc}")
+        print(f"Async smoke FAILED: {exc}")
         return 1
     except Exception as exc:
         print(
-            "Day27 async smoke FAILED: "
+            "Async smoke FAILED: "
             f"stage=unexpected; error_type={type(exc).__name__}"
         )
         return 1
     print(
-        "Day27 async smoke OK: "
+        "Async smoke OK: "
         f"run_id={run_id}, events={event_count}, report=docx"
     )
     return 0
