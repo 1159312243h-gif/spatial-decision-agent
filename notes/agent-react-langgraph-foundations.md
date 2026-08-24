@@ -1,7 +1,5 @@
 # Agent、ReAct 与 LangGraph 基础学习笔记
 
-> 日期：2026-08-16
->
 > 项目：建设项目选址与国土空间合规审查 Agent
 >
 > 资料来源：前辈 Agent 篇、ReAct 与 Function Calling 笔记，并结合当前项目的 ToolRegistry 实现进行整理。
