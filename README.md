@@ -8,6 +8,18 @@
 
 Workbench 直接按用户输入区域运行商业选址分析，不要求用户切换到演示范围，也不会伪造地块。需要展示完整 GIS/规则链时，仍可在“演示与开发选项”中主动使用版本化合成用地；演示结果明确标记合成数据，不代表真实规划许可。
 
+## 成果演示
+
+![空间决策 Agent 演示预览](demo/spatial-decision-agent-demo.gif)
+
+本次演示以“上海徐汇区便利店选址”为例，展示自然语言约束解析、场景确认、候选自动发现、POI 证据快照、候选局部补查、人工确认、异步正式分析和 DOCX 报告生成。
+
+- [观看完整操作录像（MP4，Git LFS）](demo/spatial-decision-agent-demo.mp4)
+- [下载便利店选址分析样例报告](demo/convenience-store-analysis-report.docx)
+- [查看关键流程截图](demo/screenshots/)
+
+演示使用 Overpass/OSM 公开观测数据完成市场初筛。公开 POI 和 OSM 用地观察不等于权威规划或产权依据；软评分用于候选比较，不构成商业收益保证或最终选址推荐。
+
 ## 系统能力
 
 - 支持 `coffee_shop`、`convenience_store`、`shopping_mall` 和 `logistics_park` 四类项目 Profile。
@@ -269,13 +281,3 @@ python .\scripts\benchmark.py --samples 7 --warmup-runs 2
 这些数据由 `scripts/generate_rich_fixtures.py` 确定性生成，可复现但不等于真实。接口、Workbench 和报告同时展示查询命中数、数据集总量、`is_synthetic` 与质量说明，禁止把 1,157 条局部场景数据解释为城市覆盖率或真实客流。详细边界见 `docs/fixture-data-quality.md` 和 `docs/retail-site-selection.md`。在线 Provider 已可自动加载，但用于真实决策前仍必须完成 API 授权、分页完整性、数据新鲜度、行政区覆盖率、坐标转换精度、类别映射抽检和成本评估。
 
 政策、规则和空间图层也都是合成测试数据。任何演示输出都只能表述为“系统流程与证据链已执行”，不能表述为“地块合规”或“推荐选址”。
-
-## Demo
-
-![Spatial Decision Agent Demo](demo/spatial-decision-agent-demo.gif)
-
-本次演示覆盖自然语言需求解析、场景确认、候选自动发现、
-POI 证据快照、候选局部补查、异步分析、人工复核和报告生成。
-
-- [查看完整演示说明](demo/README.md)
-- [下载便利店选址分析样例报告](demo/convenience-store-analysis-report.docx)
