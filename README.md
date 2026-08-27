@@ -269,3 +269,13 @@ python .\scripts\benchmark.py --samples 7 --warmup-runs 2
 这些数据由 `scripts/generate_rich_fixtures.py` 确定性生成，可复现但不等于真实。接口、Workbench 和报告同时展示查询命中数、数据集总量、`is_synthetic` 与质量说明，禁止把 1,157 条局部场景数据解释为城市覆盖率或真实客流。详细边界见 `docs/fixture-data-quality.md` 和 `docs/retail-site-selection.md`。在线 Provider 已可自动加载，但用于真实决策前仍必须完成 API 授权、分页完整性、数据新鲜度、行政区覆盖率、坐标转换精度、类别映射抽检和成本评估。
 
 政策、规则和空间图层也都是合成测试数据。任何演示输出都只能表述为“系统流程与证据链已执行”，不能表述为“地块合规”或“推荐选址”。
+
+## Demo
+
+![Spatial Decision Agent Demo](demo/spatial-decision-agent-demo.gif)
+
+本次演示覆盖自然语言需求解析、场景确认、候选自动发现、
+POI 证据快照、候选局部补查、异步分析、人工复核和报告生成。
+
+- [查看完整演示说明](demo/README.md)
+- [下载便利店选址分析样例报告](demo/convenience-store-analysis-report.docx)
