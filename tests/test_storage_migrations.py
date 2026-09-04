@@ -8,6 +8,7 @@ MIGRATION = (
     / "001_initial.sql"
 )
 RETAIL_MIGRATION = MIGRATION.with_name("002_retail_project_types.sql")
+MEMORY_MIGRATION = MIGRATION.with_name("003_scenario_memory.sql")
 
 
 def migration_sql() -> str:
@@ -54,4 +55,15 @@ def test_migration_runner_discovers_all_versions_in_order() -> None:
     assert [path.name for path in migration_paths()] == [
         "001_initial.sql",
         "002_retail_project_types.sql",
+        "003_scenario_memory.sql",
     ]
+
+
+def test_memory_migration_defines_actor_scoped_preferences_and_episodes() -> None:
+    sql = MEMORY_MIGRATION.read_text(encoding="utf-8")
+
+    assert "site_selection.user_site_preferences" in sql
+    assert "PRIMARY KEY (actor_id, project_type)" in sql
+    assert "site_selection.scenario_memory_episodes" in sql
+    assert "UNIQUE (actor_id, version_id)" in sql
+    assert "003_scenario_memory" in sql

@@ -9,11 +9,25 @@ from practice.site_selection import (
     ScenarioConversationReply,
     ScenarioConversationSession,
 )
+from practice.site_selection.memory import (
+    ScenarioMemoryDeleteResult,
+    ScenarioMemoryMode,
+    ScenarioMemorySnapshot,
+)
 
 
 NonEmptyString = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1),
+]
+ActorId = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9._-]+$",
+    ),
 ]
 
 
@@ -32,6 +46,8 @@ class ChatRequest(BaseModel):
     question: NonEmptyString
     session_id: NonEmptyString | None = None
     project_type: ProjectType | None = None
+    actor_id: ActorId | None = None
+    memory_mode: ScenarioMemoryMode | None = None
     candidate_parcels: list[CandidateParcel] = Field(default_factory=list)
 
 
@@ -40,6 +56,7 @@ class ChatConfirmRequest(BaseModel):
 
     version_id: NonEmptyString
     confirmed_by: NonEmptyString
+    remember_preferences: bool = False
 
 
 class ChatResponse(ScenarioConversationReply):
@@ -59,3 +76,5 @@ class ChatResponse(ScenarioConversationReply):
 
 
 ChatSessionResponse = ScenarioConversationSession
+ChatMemoryResponse = ScenarioMemorySnapshot
+ChatMemoryDeleteResponse = ScenarioMemoryDeleteResult

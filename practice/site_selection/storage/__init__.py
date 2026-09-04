@@ -6,6 +6,7 @@ from .postgres import (
     StoredSpatialFeature,
     StoredSpatialLayer,
 )
+from .postgres_memory import PostgresScenarioMemoryStore
 from .redis_state import RedisRunStateStore, RunState, RunStatus
 from .redis_runtime import (
     IdempotencyClaim,
@@ -25,6 +26,7 @@ __all__ = [
     "NearbyPOI",
     "PostgresPOIRepository",
     "PostgresSpatialRepository",
+    "PostgresScenarioMemoryStore",
     "ProjectStorageRecord",
     "IdempotencyClaim",
     "IdempotencyConflictError",

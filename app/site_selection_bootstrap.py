@@ -80,6 +80,7 @@ from practice.site_selection.spatial import (
     StoredPostGISSpatialDatasetGateway,
 )
 from practice.site_selection.storage import (
+    PostgresScenarioMemoryStore,
     RedisSiteSelectionRuntimeStore,
     RedisSupervisorSessionCoordinator,
 )
@@ -207,6 +208,7 @@ class SiteSelectionBootstrap:
     mcp_server: Any | None
     engine: Engine
     redis_client: Any
+    memory_store: PostgresScenarioMemoryStore
     explainer: SiteSelectionEvidenceExplainer | None = None
     job_queue: SiteSelectionJobQueue | None = None
     poi_provider: ConfiguredPOIProvider | None = None
@@ -628,6 +630,7 @@ def build_site_selection_bootstrap_from_environment(
             ),
             engine=engine,
             redis_client=redis_client,
+            memory_store=PostgresScenarioMemoryStore(engine),
             explainer=_build_optional_explainer(values),
             job_queue=job_queue,
             poi_provider=configured_poi_provider,

@@ -5,14 +5,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 
 from app.schemas.chat import (
+    ChatMemoryDeleteResponse,
+    ChatMemoryResponse,
     ChatConfirmRequest,
     ChatRequest,
     ChatResponse,
     ChatSessionResponse,
 )
 from app.services.site_selection_conversation import (
+    ScenarioActorConflictError,
     ScenarioConfirmationBlockedError,
     ScenarioConversationNotFoundError,
+    ScenarioMemoryConsentRequiredError,
     ScenarioVersionConflictError,
     SiteSelectionConversationService,
 )
@@ -22,6 +26,10 @@ router = APIRouter(tags=["chat"])
 SessionIdPath = Annotated[
     str,
     Path(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._-]+$"),
+]
+ActorIdPath = Annotated[
+    str,
+    Path(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._-]+$"),
 ]
 
 
@@ -42,6 +50,8 @@ def create_chat(
             command.question,
             session_id=command.session_id,
             project_type=command.project_type,
+            actor_id=command.actor_id,
+            memory_mode=command.memory_mode,
         )
         return ChatResponse.from_reply(
             reply,
@@ -49,6 +59,36 @@ def create_chat(
         )
     except ScenarioConversationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ScenarioActorConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+@router.get(
+    "/site-selection/memory/{actor_id}",
+    response_model=ChatMemoryResponse,
+)
+def get_site_selection_memory(
+    actor_id: ActorIdPath,
+    service: Annotated[
+        SiteSelectionConversationService,
+        Depends(get_conversation_service),
+    ],
+) -> ChatMemoryResponse:
+    return service.get_memory(actor_id)
+
+
+@router.delete(
+    "/site-selection/memory/{actor_id}",
+    response_model=ChatMemoryDeleteResponse,
+)
+def delete_site_selection_memory(
+    actor_id: ActorIdPath,
+    service: Annotated[
+        SiteSelectionConversationService,
+        Depends(get_conversation_service),
+    ],
+) -> ChatMemoryDeleteResponse:
+    return service.delete_memory(actor_id)
 
 
 @router.get("/chat/{session_id}", response_model=ChatSessionResponse)
@@ -80,9 +120,14 @@ def confirm_chat_scenario(
                 session_id,
                 command.version_id,
                 confirmed_by=command.confirmed_by,
+                remember_preferences=command.remember_preferences,
             )
         )
     except ScenarioConversationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    except (ScenarioVersionConflictError, ScenarioConfirmationBlockedError) as exc:
+    except (
+        ScenarioVersionConflictError,
+        ScenarioConfirmationBlockedError,
+        ScenarioMemoryConsentRequiredError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))

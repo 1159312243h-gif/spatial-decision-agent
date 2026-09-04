@@ -13,6 +13,11 @@ from .candidate_discovery import (
     RETAIL_PROJECT_TYPES,
 )
 from .domain import NonEmptyString, ProjectType
+from .memory import (
+    ConversationContextSummary,
+    ScenarioMemoryMode,
+    ScenarioMemoryRecall,
+)
 
 
 class ScenarioConstraintOperation(StrEnum):
@@ -194,12 +199,16 @@ class ScenarioConversationSession(BaseModel):
 
     session_id: NonEmptyString
     scenario_id: NonEmptyString
+    actor_id: NonEmptyString | None = None
+    memory_mode: ScenarioMemoryMode = ScenarioMemoryMode.DISABLED
     created_at: datetime
     updated_at: datetime
     messages: list[ConversationMessage] = Field(default_factory=list)
     versions: list[ScenarioVersion] = Field(default_factory=list)
     active_version_id: NonEmptyString | None = None
     pending_version_id: NonEmptyString | None = None
+    context_summary: ConversationContextSummary | None = None
+    recalled_memory: ScenarioMemoryRecall | None = None
 
     @field_validator("created_at", "updated_at")
     @classmethod
@@ -288,4 +297,8 @@ class ScenarioConversationReply(BaseModel):
     scenario_version: ScenarioVersion
     discovery_request: CandidateDiscoveryRequest | None = None
     messages: list[ConversationMessage] = Field(default_factory=list)
+    context_summary: ConversationContextSummary | None = None
+    memory_recall: ScenarioMemoryRecall | None = None
+    memory_saved: bool = False
+    memory_warnings: list[NonEmptyString] = Field(default_factory=list)
     session_ttl_seconds: int | None = None

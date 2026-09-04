@@ -42,9 +42,11 @@ from practice.site_selection import (
     FallbackScenarioInterpreter,
     FixtureRegionResolver,
     InMemoryScenarioSessionStore,
+    InMemoryScenarioMemoryStore,
     RegionCatalogEntry,
 )
 from practice.site_selection.scenario import RegionResolver, ScenarioInterpreter
+from practice.site_selection.memory import ScenarioMemoryStore
 
 
 def create_app(
@@ -61,6 +63,7 @@ def create_app(
     supervisor_service: SiteSelectionSupervisorServiceProtocol | None = None,
     scenario_interpreter: ScenarioInterpreter | None = None,
     region_resolver: RegionResolver | None = None,
+    memory_store: ScenarioMemoryStore | None = None,
     land_use_provider=None,
 ) -> FastAPI:
     lifespan = None
@@ -103,6 +106,7 @@ def create_app(
             run_store or InMemoryScenarioSessionStore(),
             FallbackScenarioInterpreter(scenario_interpreter),
             active_region_resolver,
+            memory_store=memory_store or InMemoryScenarioMemoryStore(),
         )
     )
     if run_store is not None:
@@ -160,6 +164,7 @@ def create_app_from_environment() -> FastAPI:
         supervisor_coordinator=bootstrap.supervisor_coordinator,
         scenario_interpreter=bootstrap.scenario_interpreter,
         region_resolver=bootstrap.region_resolver,
+        memory_store=bootstrap.memory_store,
         land_use_provider=(
             bootstrap.land_use_provider.provider
             if bootstrap.land_use_provider is not None

@@ -37,6 +37,7 @@ Workbench 直接按用户输入区域运行商业选址分析，不要求用户�
 - 使用版本化 Agent/Skill DAG 约束节点依赖、并行组、输出契约和 LLM 权限，并返回节点级执行 Trace。
 - 使用 Supervisor Graph 组合候选发现、可恢复人工确认和异步分析；根据证据自动路由 `market_selection` 或 `full_compliance`，Postgres 保存 checkpoint，Redis 管理会话 TTL、通用转换锁、RunState 和审计事件。
 - 支持自然语言场景对话：把项目类型、区域、搜索半径、候选数量和间距转成待确认约束；确认后形成不可变 `ScenarioVersion` 并把边界交给候选发现。
+- 支持可控的分层场景记忆：Redis 会话保存工作记忆，较早对话压缩为结构化摘要；用户显式同意后，Postgres 按 `actor_id + project_type` 保存稳定偏好和已确认情景，新会话可选择仅建议或填补缺失默认值。
 - 支持离线演示目录与高德行政区解析；区域只转换为受 20 公里安全门禁约束的中心搜索窗口，并披露 Provider、置信度和非权威边界警告。
 - 明确标记 POI 实际返回数、查询可用数和截断状态；截断与合成来源自动进入证据质量门禁。
 - 使用 Redis 保存运行状态、幂等键、POI 缓存、候选发现证据快照和事件流，并为每类数据设置 TTL。
@@ -58,6 +59,7 @@ Workbench 直接按用户输入区域运行商业选址分析，不要求用户�
 - 人工“确认已阅”只改变审计状态，永远不等于合规批准。
 - LLM 只解释已完成的结构化证据，不改变规则结果、评分或排序。
 - 对话 LLM 只允许提出 `add / replace / remove` 约束动作；Schema、冲突、数据就绪、区域边界和版本确认由确定性代码裁决。
+- 跨会话记忆默认关闭且不保存未确认场景；历史偏好只能填补本轮缺失字段，当前消息始终优先。记忆可以按 `actor_id` 查看和删除，客户端提供的 `actor_id` 仅适合本地演示，生产环境必须替换为经过认证的主体标识。
 - API 和运行状态中的未知异常只暴露清洗后的异常类型，不泄露密钥或上游响应。
 
 ## 架构概览
@@ -71,6 +73,8 @@ flowchart LR
     API --> Supervisor["Supervisor Graph"]
     API --> Conversation["Conversation / Constraint Agent"]
     Conversation --> Scenario[("Redis ScenarioVersion")]
+    Conversation --> Summary[("Redis Context Summary")]
+    Conversation --> Memory[("Postgres Preferences / Episodes")]
     Conversation --> Region["Region Resolver"]
     Scenario --> Supervisor
     Supervisor --> Checkpoint[("Postgres Checkpoint")]
@@ -230,7 +234,9 @@ docker compose stop
 | `GET` | `/health` | 服务健康检查 |
 | `POST` | `/chat` | 创建或续接自然语言场景，返回待确认 `ScenarioVersion` |
 | `GET` | `/chat/{session_id}` | 恢复场景版本与对话历史 |
-| `POST` | `/chat/{session_id}/confirm` | 确认不可变场景版本并生成候选发现请求 |
+| `POST` | `/chat/{session_id}/confirm` | 确认不可变场景版本并生成候选发现请求；可显式保存跨会话偏好 |
+| `GET` | `/site-selection/memory/{actor_id}` | 查看该主体保存的选址偏好和最近确认情景 |
+| `DELETE` | `/site-selection/memory/{actor_id}` | 删除该主体的偏好和情景记忆 |
 | `POST` | `/site-selection/preflight` | 对不完整输入执行前置检查 |
 | `POST` | `/site-selection/candidates/discover` | 按范围、用地与 POI 自动发现零售候选并冻结评分证据 |
 | `POST` | `/site-selection/supervisor/sessions` | 创建可恢复选址 session，并停在候选确认 |
@@ -246,6 +252,20 @@ docker compose stop
 | `GET` | `/site-selection/runs/{run_id}/report` | 下载 DOCX 报告 |
 | `POST` | `/site-selection/poi/preview` | 查询 POI，支持 Redis 缓存与显式刷新 |
 
+### 分层记忆使用约束
+
+`POST /chat` 可选传入 `actor_id` 和 `memory_mode`。`disabled`（默认）不读取长期记忆；`suggest` 只返回可参考的历史偏好；`apply_defaults` 只把已确认偏好填入本轮未明确给出的半径、候选数量、候选间距和降级策略。当前消息和当前 `ScenarioVersion` 始终优先，历史区域不会自动覆盖本轮区域。
+
+确认场景时只有显式传入 `remember_preferences: true` 才会把稳定偏好和隐私最小化的确认情景写入 Postgres。原始用户消息不会进入长期情景记录；完整会话仍保存在带 TTL 的 Redis 审计记录中。较早消息会被压缩为结构化 `ConversationContextSummary`，LLM 只接收摘要和最近 6 条消息，候选发现仍以完整不可变 `ScenarioVersion` 为准。
+
+```json
+{
+  "question": "在上海市长宁区开便利店",
+  "actor_id": "planner-001",
+  "memory_mode": "apply_defaults"
+}
+```
+
 MCP 暴露六个工具：`gis_feature_area`、`gis_intersection_count`、`gis_nearest_distance`、`poi_nearby`、`poi_metrics` 和 `policy_search`。
 
 ## 运行测试
@@ -256,7 +276,7 @@ MCP 暴露六个工具：`gis_feature_area`、`gis_intersection_count`、`gis_ne
 python -m pytest -q --basetemp .\.venv\pytest-tmp
 ```
 
-最近完整回归基线为 `577 passed`，冻结评测为 `24/24`；本轮 POI 可比性、正式并发和超时收敛扩展回归为 `69 passed in 3.97s`。这些数字只用于代码回归，不代表生产性能、真实数据覆盖率或公网 Provider SLA。真实 Docker 已安装 `langgraph-checkpoint-postgres 3.1.2`，此前六服务健康、API 重启恢复和新会话端到端运行均已验证；旧 Run 不会重算历史快照，验收新逻辑时必须创建新 Supervisor session。
+最近完整回归基线为 `608 passed`，冻结评测为 `24/24`；本轮 POI 可比性、正式并发和超时收敛扩展回归为 `69 passed in 3.97s`。这些数字只用于代码回归，不代表生产性能、真实数据覆盖率或公网 Provider SLA。真实 Docker 已安装 `langgraph-checkpoint-postgres 3.1.2`，此前六服务健康、API 重启恢复和新会话端到端运行均已验证；旧 Run 不会重算历史快照，验收新逻辑时必须创建新 Supervisor session。
 
 运行冻结评测：
 
