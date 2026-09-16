@@ -35,6 +35,7 @@ Workbench 直接按用户输入区域运行商业选址分析，不要求用户�
 - 使用 BM25、向量检索和 RRF 生成带政策出处、条款、页码及引用片段的检索结果。
 - 使用 LangGraph 并行执行 POI 与空间分支，再汇合到规则评估和证据审查。
 - 使用版本化 Agent/Skill DAG 约束节点依赖、并行组、输出契约和 LLM 权限，并返回节点级执行 Trace。
+- 可选启用多 Agent 协作复核：独立 Supervisor、POI、Spatial、Policy 与 Review Agent 使用角色 Prompt、自然语言消息和分域 Redis 长期记忆；Review 可反驳并触发动态重新委派，调用预算耗尽或引用越界时转人工。
 - 使用 Supervisor Graph 组合候选发现、可恢复人工确认和异步分析；根据证据自动路由 `market_selection` 或 `full_compliance`，Postgres 保存 checkpoint，Redis 管理会话 TTL、通用转换锁、RunState 和审计事件。
 - 支持自然语言场景对话：把项目类型、区域、搜索半径、候选数量和间距转成待确认约束；确认后形成不可变 `ScenarioVersion` 并把边界交给候选发现。
 - 支持可控的分层场景记忆：Redis 会话保存工作记忆，较早对话压缩为结构化摘要；用户显式同意后，Postgres 按 `actor_id + project_type` 保存稳定偏好和已确认情景，新会话可选择仅建议或填补缺失默认值。
@@ -46,6 +47,9 @@ Workbench 直接按用户输入区域运行商业选址分析，不要求用户�
 - 通过 FastAPI、MCP 和 Streamlit Workbench 提供 HTTP、工具调用和人工演示入口。
 - 输出 DOCX 报告、SHA-256 摘要、阶段耗时和人工确认审计事件。
 - 提供 24 条冻结评测，其中 4 条为 POI 故障场景。
+- 用统一 Agent Harness 管理 Prompt 版本、结构化上下文、角色/Memory 装配、调用预算、Guardrail 与 Trace；上下文或证据引用越界时在模型调用前 fail-closed。
+- 提供离线 Prompt 候选、同冻结集 Baseline/Candidate 对照、质量/安全/成本门禁、人工批准晋级和审计回滚的受控 Agent 进化闭环。
+- 提供 6 条多 Agent 专项冻结评测，覆盖直接验收、动态委派、Critic 反驳恢复、协议违规、人工复核和预算耗尽。
 
 ## 安全边界
 
@@ -58,6 +62,8 @@ Workbench 直接按用户输入区域运行商业选址分析，不要求用户�
 - Fixture 降级会记录原始 Provider 与失败类型，并触发人工复核。
 - 人工“确认已阅”只改变审计状态，永远不等于合规批准。
 - LLM 只解释已完成的结构化证据，不改变规则结果、评分或排序。
+- 多 Agent 协作层同样不能改写确定性业务状态；所有自然语言意见必须引用本次证据白名单，模型失败、未知引用、记忆版本冲突和循环超预算均 fail-closed。
+- Agent 进化只在线下生成 Prompt 候选；未经同版本冻结集门禁和人工批准不能成为活动版本，运行时不得自行修改代码、Prompt 或部署配置。
 - 对话 LLM 只允许提出 `add / replace / remove` 约束动作；Schema、冲突、数据就绪、区域边界和版本确认由确定性代码裁决。
 - 跨会话记忆默认关闭且不保存未确认场景；历史偏好只能填补本轮缺失字段，当前消息始终优先。记忆可以按 `actor_id` 查看和删除，客户端提供的 `actor_id` 仅适合本地演示，生产环境必须替换为经过认证的主体标识。
 - API 和运行状态中的未知异常只暴露清洗后的异常类型，不泄露密钥或上游响应。
@@ -89,6 +95,12 @@ flowchart LR
     POI --> Merge["Evidence Merge"]
     Rules --> Merge
     Merge --> Review["Evidence Review"]
+    Review --> Harness["Agent Harness / Prompt Registry / Guardrails"]
+    Harness --> MASupervisor["LLM Multi-Agent Supervisor"]
+    MASupervisor --> Specialists["POI / Spatial / Policy Agents"]
+    Specialists --> Critic["Review / Critic Agent"]
+    Critic -->|redelegate| MASupervisor
+    Critic --> RedisMemory[("Role-scoped Redis Memory")]
     Review --> Redis[("Redis State")]
     Review --> Reports["Shared DOCX Reports"]
     GIS --> PostGIS[("PostGIS")]
@@ -99,6 +111,10 @@ flowchart LR
 ```
 
 完整的组件职责、调用顺序和故障边界见 [架构文档](docs/architecture.md)。字段与存储结构见 [数据字典](docs/data-dictionary.md)，已知失败模式见 [Bad Case 报告](docs/bad-cases.md)。
+
+多 Agent 消息协议、角色 Prompt/模型隔离、动态委派、自反思循环、Redis 记忆和预算终态见 [多 Agent 协作文档](docs/multi-agent-collaboration.md)。
+
+Harness 的统一装配、Prompt 受控进化、晋级/回滚门禁和专项评测指标见 [Agent Harness、受控进化与专项评测](docs/agent-harness-evolution-evaluation.md)。
 
 需要逐文件理解 Agent/Skill DAG、函数调用链、状态机、POI 可信度和调试入口时，阅读 [GIS Agent 实现详解与源码导读](docs/agent-implementation-guide.md)。
 
@@ -173,6 +189,8 @@ Workbench 使用分层地图：候选地为带编号标签的红色大标记，P
 `Agent 运行`页签展示本次使用的执行计划、每个 Agent/Skill 节点的状态与耗时，以及 Evidence Review 质量门禁。POI 达到查询上限时，页面明确提示数量和密度只是下界；合成 Fixture 和在线来源不会静默混写成同一可信度。
 
 LLM 证据解释是确定性分析之后的非关键增强。Compose 默认将单次解释限制为 15 秒并关闭 SDK 自动重试；连接或模型不可用时解释标记为 `failed`，GIS、POI、规则、评分和报告结果仍保持 `completed`，不会再为同一个失败请求等待数分钟。
+
+多 Agent 协作复核默认关闭。启用 `SITE_SELECTION_MULTI_AGENT_ENABLED=true` 后，Worker 会在确定性 Evidence Review 之后进入 Agent Harness，再运行动态委派与 Critic 循环，并把版本、上下文、预算、Trace 和完整消息分别写入 `agent_harness_report`、`collaboration_report`；该层只增加复核信息，不改变确定性分析结果。各角色默认复用 `LLM_MODEL`，也可通过 `SITE_SELECTION_*_AGENT_MODEL` 分别指定，具体配置见多 Agent 协作文档。
 
 ## 自动加载 POI
 
@@ -277,7 +295,7 @@ MCP 暴露六个工具：`gis_feature_area`、`gis_intersection_count`、`gis_ne
 python -m pytest -q --basetemp .\.venv\pytest-tmp
 ```
 
-最近完整回归基线为 `608 passed`，冻结评测为 `24/24`；本轮 POI 可比性、正式并发和超时收敛扩展回归为 `69 passed in 3.97s`。这些数字只用于代码回归，不代表生产性能、真实数据覆盖率或公网 Provider SLA。真实 Docker 已安装 `langgraph-checkpoint-postgres 3.1.2`，此前六服务健康、API 重启恢复和新会话端到端运行均已验证；旧 Run 不会重算历史快照，验收新逻辑时必须创建新 Supervisor session。
+最近完整回归基线为 `623 passed`，业务冻结评测为 `24/24`，多 Agent Harness 专项评测为 `6/6`。新增覆盖统一 Harness、Prompt 版本、上下文门禁、动态委派、Review 反思恢复、人工批准晋级/回滚、预算收敛、证据引用边界、Redis 角色记忆隔离及启动配置。上述数字只用于代码与协议回归，不代表生产性能、真实任务成功率、决策准确率、真实数据覆盖率或公网 Provider SLA。真实 Docker 已安装 `langgraph-checkpoint-postgres 3.1.2`，此前六服务健康、API 重启恢复和新会话端到端运行均已验证；旧 Run 不会重算历史快照，验收新逻辑时必须创建新 Supervisor session。
 
 运行冻结评测：
 
@@ -286,6 +304,14 @@ python .\scripts\run_evaluations.py
 ```
 
 输出写入 `evals/results/summary.json`。脚本只使用本地合成 Fixture，不访问在线 POI。
+
+运行多 Agent Harness 专项评测：
+
+```powershell
+python .\scripts\run_agent_evaluations.py
+```
+
+输出写入 `evals/results/agent-summary.json`。该脚本使用 Scripted Model，只验证协作协议、Guardrail 与预算收敛，不代表真实 LLM 的语义质量；Prompt 晋级仍需固定真实模型参数执行 Baseline/Candidate A/B，并由人工批准。
 
 记录本机性能：
 

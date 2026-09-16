@@ -32,8 +32,9 @@ from .evidence_snapshot import (
     CandidateDiscoverySnapshotStore,
     build_candidate_discovery_poi_snapshot,
 )
-from .poi import POIFeatureSet, POIProvider, POIQuery
+from .poi import POIFeatureSet, POIProvider, POIQuery, POISourceMeta
 from .poi_adapters import haversine_distance_m
+from .online_poi_adapters import POIAvailabilityError
 from .poi_scoring import POIScoringConfig, score_poi_feature_sets
 from .poi_service import calculate_poi_metrics
 from .online_land_use import (
@@ -1035,8 +1036,20 @@ def _load_market_evidence(request, profile, gateway):
             corner_distance=corner_distance,
         )
     if not any(item.records for item in scoring_feature_sets):
+        diagnostics = "；".join(
+            f"{item.query.group_key}={len(item.records)}条"
+            + (
+                "（"
+                + "、".join(item.source.unavailable_categories)
+                + "不可用）"
+                if item.source.unavailable_categories
+                else ""
+            )
+            for item in scoring_feature_sets
+        )
         raise CandidateDiscoveryBlockedError(
-            "给定范围内没有可用于候选排序的 POI 市场证据"
+            "给定范围内没有可用于候选排序的 POI 市场证据；"
+            f"评分组明细：{diagnostics}"
         )
     (
         scoring_feature_sets,
@@ -1122,7 +1135,10 @@ def _load_bulk_scoring_evidence(
             )
         )
     except Exception as exc:
-        raise CandidateDiscoveryBlockedError("POI 市场证据不可用") from exc
+        reason = str(exc).strip() or type(exc).__name__
+        raise CandidateDiscoveryBlockedError(
+            "POI 市场证据不可用：" + reason
+        ) from exc
     return [
         _slice_bulk_feature_set(
             scoring_bulk,
@@ -1174,17 +1190,105 @@ def _load_balanced_scoring_evidence(
         for group in profile.poi_groups
     ]
     try:
-        return _search_queries(gateway, queries)
+        return _search_queries_retaining_availability_failures(gateway, queries)
     except Exception as exc:
-        raise CandidateDiscoveryBlockedError("POI 市场证据不可用") from exc
+        reason = str(exc).strip() or type(exc).__name__
+        raise CandidateDiscoveryBlockedError(
+            "POI 市场证据不可用：" + reason
+        ) from exc
+
+
+def _search_queries_retaining_availability_failures(gateway, queries):
+    if not queries:
+        return []
+    first_query = queries[0]
+    try:
+        first = gateway.search(first_query)
+    except POIAvailabilityError as exc:
+        first = _unavailable_scoring_feature_set(gateway, first_query, exc)
+    remaining = queries[1:]
+    fallback_search = getattr(gateway, "search_fallback", None)
+    if (
+        remaining
+        and first.source.fallback_from is not None
+        and callable(fallback_search)
+    ):
+        return [
+            first,
+            *[
+                fallback_search(query, source_template=first.source)
+                for query in remaining
+            ],
+        ]
+    if not remaining:
+        return [first]
+
+    with ThreadPoolExecutor(max_workers=min(4, len(remaining))) as executor:
+        futures = [executor.submit(gateway.search, query) for query in remaining]
+        results = [first]
+        for query, future in zip(remaining, futures, strict=True):
+            try:
+                results.append(future.result())
+            except POIAvailabilityError as exc:
+                results.append(
+                    _unavailable_scoring_feature_set(gateway, query, exc)
+                )
+        return results
+
+
+def _unavailable_scoring_feature_set(gateway, query, error):
+    provider = getattr(gateway, "provider", None)
+    if not isinstance(provider, POIProvider):
+        raise error
+    message = str(error).strip() or type(error).__name__
+    source = POISourceMeta(
+        provider=provider,
+        dataset_id=f"{provider.value}-availability-failure",
+        queried_at=datetime.now(timezone.utc),
+        record_count=0,
+        available_record_count=None,
+        is_truncated=True,
+        unavailable_categories=list(query.categories),
+        availability_warnings=[f"{type(error).__name__}：{message}"],
+    )
+    return POIFeatureSet(
+        query=query.model_copy(deep=True),
+        records=[],
+        source=source,
+        metrics=calculate_poi_metrics(query, []),
+    )
 
 
 def _search_queries(gateway, queries):
     if not queries:
         return []
-    with ThreadPoolExecutor(max_workers=min(4, len(queries))) as executor:
-        futures = [executor.submit(gateway.search, query) for query in queries]
-        return [future.result() for future in futures]
+
+    # Probe one request first.  When the configured online provider is already
+    # known to be unavailable, the fallback adapter can answer the rest of the
+    # batch without re-running the same network timeout for every tile/group.
+    first = gateway.search(queries[0])
+    remaining = queries[1:]
+    fallback_search = getattr(gateway, "search_fallback", None)
+    if (
+        remaining
+        and first.source.fallback_from is not None
+        and callable(fallback_search)
+    ):
+        return [
+            first,
+            *[
+                fallback_search(
+                    query,
+                    source_template=first.source,
+                )
+                for query in remaining
+            ],
+        ]
+    if not remaining:
+        return [first]
+    with ThreadPoolExecutor(max_workers=min(4, len(remaining))) as executor:
+        futures = [executor.submit(gateway.search, query) for query in remaining]
+        return [first, *[future.result() for future in futures]]
 
 
 def _repair_incomplete_scoring_evidence(
@@ -1202,25 +1306,72 @@ def _repair_incomplete_scoring_evidence(
     }
     trigger_reasons_by_group = {}
     repair_queries_by_group = {}
+    saturated_groups = []
     for group in profile.poi_groups:
         broad = broad_by_group[group.group_key]
+        missing_categories = _missing_categories(broad, group.categories)
         trigger_reasons = _feature_set_incomplete_reasons(
             broad,
             group.categories,
         )
         trigger_reasons_by_group[group.group_key] = trigger_reasons
+        query_limit_saturated = bool(
+            not broad.source.is_synthetic
+            and broad.source.fallback_from is None
+            and broad.source.is_truncated
+            and broad.source.record_count == broad.query.limit
+            and not missing_categories
+        )
+        if query_limit_saturated:
+            saturated_groups.append(group.group_key)
         repairable = bool(
-            broad.source.fallback_from is not None
-            or broad.source.is_truncated
+            not broad.source.unavailable_categories
+            and (
+                broad.source.fallback_from is not None
+            or (
+                broad.source.is_truncated
+                and not query_limit_saturated
+            )
             or (
                 not broad.source.is_synthetic
-                and _missing_categories(broad, group.categories)
+                and missing_categories
+            )
             )
         )
         if trigger_reasons and repairable:
             repair_queries_by_group[group.group_key] = (
                 _build_scoring_repair_queries(request, group)
             )
+
+    # If every scoring query already fell back from an unavailable
+    # online provider, retrying four tiles per group only amplifies the
+    # outage: with a global provider limiter it can outlive the HTTP request
+    # timeout. Keep the explicit Fixture evidence and audit warning, while
+    # allowing the discovery response to return promptly. Partial outages
+    # still use the normal repair path below.
+    if repair_queries_by_group and all(
+        item.source.fallback_from is not None
+        for item in broad_feature_sets
+    ):
+        repaired_feature_sets = list(broad_feature_sets)
+        statuses = [
+            _GroupEvidenceRepair(
+                group_key=group.group_key,
+                trigger_reasons=trigger_reasons_by_group[group.group_key],
+                remaining_reasons=[
+                    *trigger_reasons_by_group[group.group_key],
+                    "在线 Provider 全部不可用，已跳过分区补查",
+                ],
+            )
+            for group in profile.poi_groups
+        ]
+        return (
+            repaired_feature_sets,
+            statuses,
+            [
+                "在线 POI Provider 全部不可用，已跳过分区补查并保留 Fixture 降级结果"
+            ],
+        )
 
     # Interleave tiles across groups so one slow category cannot monopolize
     # the executor. A single executor also prevents six groups from each
@@ -1243,7 +1394,11 @@ def _repair_incomplete_scoring_evidence(
 
     repaired_feature_sets = []
     statuses = []
-    warnings = []
+    warnings = [
+        f"POI 评分组 {group_key} 已达到查询上限且类别齐全，"
+        "保留截断标记并跳过同步分区补查"
+        for group_key in saturated_groups
+    ]
     for group in profile.poi_groups:
         broad = broad_by_group[group.group_key]
         trigger_reasons = trigger_reasons_by_group[group.group_key]
@@ -1461,6 +1616,8 @@ def _merge_repaired_scoring_group(
             "quality_notice": None,
             "fallback_from": None,
             "fallback_reason": None,
+            "unavailable_categories": [],
+            "availability_warnings": [],
             "cache_hit": all(item.source.cache_hit for item in contributors),
             "evidence_snapshot_id": None,
             "evidence_reused": False,
@@ -1488,6 +1645,11 @@ def _feature_set_incomplete_reasons(feature_set, expected_categories) -> list[st
         reasons.append("仅有合成 Fixture 证据")
     if feature_set.source.is_truncated:
         reasons.append("返回截断或空间覆盖未完成")
+    if feature_set.source.unavailable_categories:
+        reasons.append(
+            "上游查询失败类别："
+            + "、".join(feature_set.source.unavailable_categories)
+        )
     missing = _missing_categories(feature_set, expected_categories)
     if missing:
         reasons.append("缺少类别：" + "、".join(missing))
@@ -1508,9 +1670,50 @@ def _search_optional_queries(gateway, queries):
         return [], []
     results = []
     warnings = []
-    with ThreadPoolExecutor(max_workers=min(4, len(queries))) as executor:
-        futures = [executor.submit(gateway.search, query) for query in queries]
-        for query, future in zip(queries, futures, strict=True):
+
+    # The first request doubles as an availability probe.  A known fallback
+    # result lets optional context batches finish locally instead of queuing
+    # more doomed upstream calls behind the global provider limiter.
+    first = queries[0]
+    try:
+        first_result = gateway.search(first)
+    except Exception as exc:
+        warnings.append(
+            "范围背景 POI 批次加载失败："
+            f"{first.group_key} ({type(exc).__name__})"
+        )
+        first_result = None
+    if first_result is not None:
+        results.append(first_result)
+        remaining = queries[1:]
+        fallback_search = getattr(gateway, "search_fallback", None)
+        if (
+            remaining
+            and first_result.source.fallback_from is not None
+            and callable(fallback_search)
+        ):
+            for query in remaining:
+                try:
+                    results.append(
+                        fallback_search(
+                            query,
+                            source_template=first_result.source,
+                        )
+                    )
+                except Exception as exc:
+                    warnings.append(
+                        "范围背景 POI 批次加载失败："
+                        f"{query.group_key} ({type(exc).__name__})"
+                    )
+            return results, warnings
+    else:
+        remaining = queries[1:]
+
+    if not remaining:
+        return results, warnings
+    with ThreadPoolExecutor(max_workers=min(4, len(remaining))) as executor:
+        futures = [executor.submit(gateway.search, query) for query in remaining]
+        for query, future in zip(queries[1:], futures, strict=True):
             try:
                 results.append(future.result())
             except Exception as exc:
@@ -1678,11 +1881,12 @@ def _score_pool_candidate(
                     record.model_copy(update={"distance_m": distance_m})
                 )
         records.sort(key=lambda item: (item.distance_m or 0, item.poi_id))
+        category_query_failed = bool(broad.source.unavailable_categories)
         source = broad.source.model_copy(
             update={
                 "record_count": len(records),
                 "available_record_count": len(records),
-                "is_truncated": False,
+                "is_truncated": category_query_failed,
             }
         )
         local_sets.append(
@@ -1723,6 +1927,10 @@ def _score_pool_candidate(
         formal_analysis_allowed=pool.formal_analysis_allowed,
         requires_human_review=(
             pool.suitability is LandUseSuitability.REVIEW_REQUIRED
+            or any(
+                item.source.unavailable_categories
+                for item in broad_feature_sets
+            )
         ),
         evidence_counts={
             item.query.group_key: len(item.records) for item in local_sets

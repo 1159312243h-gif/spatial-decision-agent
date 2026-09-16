@@ -749,6 +749,24 @@ def evidence_review_rows(run: SiteSelectionRunResponse) -> list[dict]:
     ]
 
 
+def agent_collaboration_rows(run: SiteSelectionRunResponse) -> list[dict]:
+    analysis = _require_analysis(run)
+    report = analysis.collaboration_report
+    if report is None:
+        return []
+    return [
+        {
+            "round": message.round_index,
+            "kind": message.kind.value,
+            "sender": message.sender.value,
+            "recipient": message.recipient.value,
+            "content": message.content,
+            "evidence_references": ", ".join(message.evidence_references),
+        }
+        for message in report.messages
+    ]
+
+
 def map_rows(
     payload: dict[str, Any],
     run: SiteSelectionRunResponse,

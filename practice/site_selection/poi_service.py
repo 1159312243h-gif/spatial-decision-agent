@@ -110,7 +110,10 @@ def execute_poi_queries(
     if max_workers <= 0:
         raise ValueError("POI query worker count must be positive")
     queries = list(state.poi_queries)
-    if len(queries) <= 1 or max_workers == 1:
+    batch_search = getattr(gateway, "search_many", None)
+    if callable(batch_search):
+        feature_sets = list(batch_search(queries, max_workers=max_workers))
+    elif len(queries) <= 1 or max_workers == 1:
         feature_sets = [gateway.search(query) for query in queries]
     else:
         with ThreadPoolExecutor(
@@ -118,6 +121,11 @@ def execute_poi_queries(
             thread_name_prefix="site-selection-poi",
         ) as executor:
             feature_sets = list(executor.map(gateway.search, queries))
+    if len(feature_sets) != len(queries) or any(
+        feature_set.query != query
+        for query, feature_set in zip(queries, feature_sets, strict=True)
+    ):
+        raise ValueError("POI 批量查询结果必须与输入查询保持一一对应和稳定顺序")
     evidence = [
         POIEvidence(
             parcel_id=parcel.parcel_id,

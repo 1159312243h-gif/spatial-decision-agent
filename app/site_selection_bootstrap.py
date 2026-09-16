@@ -6,7 +6,7 @@ import sys
 from math import pi
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,8 @@ from app.services.site_selection_service import (
     SiteSelectionRuntimeRegistry,
 )
 from practice.site_selection import (
+    AgentRole,
+    CollaborationBudget,
     ConstraintLayerSpec,
     ConstraintLayerType,
     DatasetManifest,
@@ -59,8 +61,18 @@ from practice.site_selection import (
     get_project_profile,
     build_region_resolver,
     OpenAIScenarioInterpreter,
+    OpenAIStructuredAgentModel,
+    RedisAgentMemoryStore,
     RegionCatalogEntry,
     load_rule_pack,
+    AgentRoster,
+    AgentHarness,
+    AgentHarnessConfig,
+    MultiAgentReviewRuntime,
+    PromptBundle,
+    PromptVersionRegistry,
+    RoleAgent,
+    default_agent_profiles,
 )
 from practice.site_selection.mcp_server import create_site_selection_mcp_server
 from practice.site_selection.mcp_tools import create_site_selection_tool_registry
@@ -218,6 +230,7 @@ class SiteSelectionBootstrap:
     supervisor_coordinator: RedisSupervisorSessionCoordinator | None = None
     scenario_interpreter: Any | None = None
     region_resolver: Any | None = None
+    multi_agent_runtime: MultiAgentReviewRuntime | AgentHarness | None = None
     run_mode: str = "sync"
     _closed: bool = field(default=False, init=False, repr=False)
 
@@ -332,6 +345,7 @@ def build_fixture_runtime_registry(
     spatial_gateway: Any | None = None,
     poi_adapter: POISourceAdapter | None = None,
     authoritative_land_manifest: DatasetManifest | None = None,
+    multi_agent_runtime: MultiAgentReviewRuntime | AgentHarness | None = None,
 ) -> SiteSelectionRuntimeRegistry:
     root = Path(fixture_root)
     spatial_seed = load_fixture_spatial_seed(root / "spatial_layers.json")
@@ -352,6 +366,7 @@ def build_fixture_runtime_registry(
             gateway=gateway,
             poi_adapter=active_poi_adapter,
             spatial_seed=spatial_seed,
+            multi_agent_runtime=multi_agent_runtime,
         ),
         ProjectType.LOGISTICS_PARK: _build_fixture_runtime(
             ProjectType.LOGISTICS_PARK,
@@ -363,6 +378,7 @@ def build_fixture_runtime_registry(
             gateway=gateway,
             poi_adapter=active_poi_adapter,
             spatial_seed=spatial_seed,
+            multi_agent_runtime=multi_agent_runtime,
         ),
         ProjectType.COFFEE_SHOP: _build_fixture_runtime(
             ProjectType.COFFEE_SHOP,
@@ -380,6 +396,7 @@ def build_fixture_runtime_registry(
                 else layer_by_id["demo-coffee-discovery-pool"]
             ),
             discovery_manifest=authoritative_land_manifest,
+            multi_agent_runtime=multi_agent_runtime,
         ),
         ProjectType.CONVENIENCE_STORE: _build_fixture_runtime(
             ProjectType.CONVENIENCE_STORE,
@@ -397,6 +414,7 @@ def build_fixture_runtime_registry(
                 else layer_by_id["demo-convenience-discovery-pool"]
             ),
             discovery_manifest=authoritative_land_manifest,
+            multi_agent_runtime=multi_agent_runtime,
         ),
     }
     return SiteSelectionRuntimeRegistry(runtimes)
@@ -471,7 +489,7 @@ def build_site_selection_bootstrap_from_environment(
     poi_cache_ttl_seconds = _positive_int_environment(
         values,
         "SITE_SELECTION_POI_CACHE_TTL_SECONDS",
-        3_600,
+        21_600,
     )
     land_use_cache_ttl_seconds = _positive_int_environment(
         values,
@@ -524,6 +542,7 @@ def build_site_selection_bootstrap_from_environment(
     configured_land_use_provider = None
     supervisor_checkpointer = None
     supervisor_checkpointer_context = None
+    multi_agent_runtime = None
     try:
         migration_applier(engine)
         root = Path(fixture_root)
@@ -536,6 +555,11 @@ def build_site_selection_bootstrap_from_environment(
 
         redis_client = redis_factory(redis_url, decode_responses=True)
         redis_client.ping()
+        multi_agent_runtime = _build_optional_multi_agent_runtime(
+            values,
+            redis_client,
+            runtime_namespace=runtime_namespace,
+        )
         run_store = RedisSiteSelectionRuntimeStore(
             redis_client,
             namespace=runtime_namespace,
@@ -620,6 +644,7 @@ def build_site_selection_bootstrap_from_environment(
                 fixture_root=root,
                 poi_adapter=configured_poi_provider.adapter,
                 authoritative_land_manifest=authoritative_land_manifest,
+                multi_agent_runtime=multi_agent_runtime,
             ),
             run_store=run_store,
             report_store=FileSystemSiteSelectionReportStore(report_dir),
@@ -640,6 +665,7 @@ def build_site_selection_bootstrap_from_environment(
             supervisor_coordinator=supervisor_coordinator,
             scenario_interpreter=_build_optional_scenario_interpreter(values),
             region_resolver=region_resolver,
+            multi_agent_runtime=multi_agent_runtime,
             run_mode=run_mode,
         )
     except Exception as exc:
@@ -697,6 +723,7 @@ def _build_fixture_runtime(
     spatial_seed: FixtureSpatialSeed,
     discovery_layer: FixtureLayerSeed | None = None,
     discovery_manifest: DatasetManifest | None = None,
+    multi_agent_runtime: MultiAgentReviewRuntime | AgentHarness | None = None,
 ) -> SiteSelectionRuntime:
     manifests = [
         _fixture_manifest(candidate_layer, spatial_seed),
@@ -728,6 +755,7 @@ def _build_fixture_runtime(
             rules=rule_pack.rules,
             buffer_distance_m=500,
             site_scoring_config=_fixture_site_scoring_config(project_type),
+            multi_agent_runtime=multi_agent_runtime,
         ),
     )
 
@@ -980,6 +1008,142 @@ def _close_quietly(resource: Any | None) -> None:
         close()
     except Exception:
         pass
+
+
+def _build_optional_multi_agent_runtime(
+    values: Mapping[str, str],
+    redis_client: Any,
+    *,
+    runtime_namespace: str,
+    client_factory: Callable[..., Any] | None = None,
+) -> AgentHarness | None:
+    if not _boolean_environment(
+        values,
+        "SITE_SELECTION_MULTI_AGENT_ENABLED",
+        False,
+    ):
+        return None
+    names = ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL")
+    configured = {name: values.get(name, "").strip() for name in names}
+    missing = [name for name, value in configured.items() if not value]
+    if missing:
+        raise SiteSelectionBootstrapError(
+            "多 Agent 配置不完整：" + ", ".join(missing)
+        )
+    if client_factory is None:
+        from openai import OpenAI
+
+        client_factory = OpenAI
+    client = client_factory(
+        api_key=configured["LLM_API_KEY"],
+        base_url=configured["LLM_BASE_URL"],
+        timeout=_positive_float_environment(
+            values,
+            "SITE_SELECTION_MULTI_AGENT_TIMEOUT_SECONDS",
+            15,
+        ),
+        max_retries=_non_negative_int_environment(
+            values,
+            "SITE_SELECTION_MULTI_AGENT_MAX_RETRIES",
+            0,
+        ),
+    )
+    role_model_variables = {
+        AgentRole.SUPERVISOR: "SITE_SELECTION_SUPERVISOR_MODEL",
+        AgentRole.POI: "SITE_SELECTION_POI_AGENT_MODEL",
+        AgentRole.SPATIAL: "SITE_SELECTION_SPATIAL_AGENT_MODEL",
+        AgentRole.POLICY: "SITE_SELECTION_POLICY_AGENT_MODEL",
+        AgentRole.REVIEW: "SITE_SELECTION_REVIEW_AGENT_MODEL",
+    }
+    profiles = default_agent_profiles(
+        configured["LLM_MODEL"],
+        model_overrides={
+            role: values.get(name, "").strip() or configured["LLM_MODEL"]
+            for role, name in role_model_variables.items()
+        },
+    )
+    memory_ttl_seconds = _positive_int_environment(
+        values,
+        "SITE_SELECTION_AGENT_MEMORY_TTL_SECONDS",
+        2_592_000,
+    )
+    models = {
+        role: OpenAIStructuredAgentModel(client) for role in profiles
+    }
+    memory_stores = {
+        role: RedisAgentMemoryStore(
+            redis_client,
+            namespace=f"{runtime_namespace}:agent-memory",
+            ttl_seconds=memory_ttl_seconds,
+        )
+        for role in profiles
+    }
+    budget = CollaborationBudget(
+            max_delegations=_positive_int_environment(
+                values,
+                "SITE_SELECTION_MULTI_AGENT_MAX_DELEGATIONS",
+                6,
+            ),
+            max_reflection_rounds=_non_negative_int_environment(
+                values,
+                "SITE_SELECTION_MULTI_AGENT_MAX_REFLECTION_ROUNDS",
+                2,
+            ),
+            max_llm_calls=_positive_int_environment(
+                values,
+                "SITE_SELECTION_MULTI_AGENT_MAX_LLM_CALLS",
+                12,
+            ),
+        )
+    bundle = PromptBundle(
+        version=(
+            values.get(
+                "SITE_SELECTION_AGENT_PROMPT_VERSION",
+                "multi-agent-prompts-v1",
+            ).strip()
+            or "multi-agent-prompts-v1"
+        ),
+        change_summary="Configured production multi-Agent prompts",
+        created_at=datetime.now(UTC),
+        profiles=profiles,
+    )
+
+    def runtime_factory(active_bundle: PromptBundle) -> MultiAgentReviewRuntime:
+        roster = AgentRoster(
+            agents={
+                role: RoleAgent(
+                    profile=profile,
+                    model=models[role],
+                    memory_store=memory_stores[role],
+                )
+                for role, profile in active_bundle.profiles.items()
+            }
+        )
+        return MultiAgentReviewRuntime(roster, budget=budget)
+
+    return AgentHarness(
+        PromptVersionRegistry(bundle),
+        runtime_factory,
+        config=AgentHarnessConfig(
+            harness_version=(
+                values.get(
+                    "SITE_SELECTION_AGENT_HARNESS_VERSION",
+                    "site-selection-harness-v1",
+                ).strip()
+                or "site-selection-harness-v1"
+            ),
+            max_context_characters=_positive_int_environment(
+                values,
+                "SITE_SELECTION_AGENT_MAX_CONTEXT_CHARACTERS",
+                120_000,
+            ),
+            max_evidence_references=_positive_int_environment(
+                values,
+                "SITE_SELECTION_AGENT_MAX_EVIDENCE_REFERENCES",
+                2_000,
+            ),
+        ),
+    )
 
 
 def _build_optional_explainer(

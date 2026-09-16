@@ -6,6 +6,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .agent_orchestration import AgentExecutionPlan, AgentStepTrace
+from .agent_collaboration_contracts import AgentCollaborationReport
+from .agent_harness_contracts import AgentHarnessReport
 from .constraints import ConstraintObservation
 from .domain import DatasetManifest, NonEmptyString, ProjectRequest, ProjectType
 from .poi import POIFeatureSet, POIQuery
@@ -257,6 +259,8 @@ class AgentState(BaseModel):
     evidence_review_report: EvidenceReviewReport | None = None
     execution_plan: AgentExecutionPlan | None = None
     agent_trace: list[AgentStepTrace] = Field(default_factory=list)
+    collaboration_report: AgentCollaborationReport | None = None
+    agent_harness_report: AgentHarnessReport | None = None
     errors: list[NonEmptyString] = Field(default_factory=list)
     status: AnalysisStatus = AnalysisStatus.INTAKE
 
@@ -316,4 +320,19 @@ class AgentState(BaseModel):
                     "Agent trace 引用了计划外节点："
                     + ", ".join(sorted(unknown))
                 )
+        if (
+            self.collaboration_report is not None
+            and self.collaboration_report.request_id != self.request.request_id
+        ):
+            raise ValueError("多 Agent 协作报告 request_id 必须与请求一致")
+        if (
+            self.agent_harness_report is not None
+            and self.agent_harness_report.request_id != self.request.request_id
+        ):
+            raise ValueError("Agent Harness 报告 request_id 必须与请求一致")
+        if (
+            self.agent_harness_report is not None
+            and self.collaboration_report is None
+        ):
+            raise ValueError("Agent Harness 报告必须绑定多 Agent 协作报告")
         return self

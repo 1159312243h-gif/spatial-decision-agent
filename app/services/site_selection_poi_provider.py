@@ -9,11 +9,13 @@ import httpx
 from practice.site_selection.online_poi_adapters import (
     AmapPOIAdapter,
     CachedPOIAdapter,
+    CategoryPartitioningPOIAdapter,
     FallbackPOIAdapter,
     FixedIntervalRateLimiter,
     GCJ02CoordinateTransformer,
     OverpassPOIAdapter,
     OverpassTagFilter,
+    PostGISPOIRecoveryAdapter,
     PersistingPOIAdapter,
     RetryingCircuitBreakerPOIAdapter,
 )
@@ -41,6 +43,9 @@ class ConfiguredPOIProvider:
 
 
 OVERPASS_CATEGORY_FILTERS: dict[str, OverpassTagFilter] = {
+    # Keep the original business semantics.  The query planner below limits
+    # element types instead of replacing station/stop tags with narrower tags
+    # that are sparsely mapped in some regions.
     "地铁站": OverpassTagFilter(key="railway", value="station"),
     "公交站": OverpassTagFilter(key="highway", value="bus_stop"),
     "住宅小区": OverpassTagFilter(key="landuse", value="residential"),
@@ -71,6 +76,18 @@ OVERPASS_CATEGORY_FILTERS: dict[str, OverpassTagFilter] = {
     "加油站": OverpassTagFilter(key="amenity", value="fuel"),
     "充电站": OverpassTagFilter(key="amenity", value="charging_station"),
     "货车维修": OverpassTagFilter(key="shop", value="car_repair"),
+}
+
+# OSM point tags should not force Overpass to scan relation geometries. Most
+# remaining business categories are represented by nodes or ways; omitting
+# relations keeps the live query bounded while preserving usable POI centers.
+OVERPASS_CATEGORY_ELEMENT_TYPES: dict[str, tuple[str, ...]] = {
+    category: (
+        ("node",)
+        if category in {"高速收费站", "高速出入口"}
+        else ("node", "way")
+    )
+    for category in OVERPASS_CATEGORY_FILTERS
 }
 
 
@@ -158,9 +175,16 @@ def build_configured_poi_provider(
         primary = OverpassPOIAdapter(
             http_client,
             OVERPASS_CATEGORY_FILTERS,
+            category_element_types=OVERPASS_CATEGORY_ELEMENT_TYPES,
             endpoint=environ.get(
                 "SITE_SELECTION_OVERPASS_ENDPOINT",
                 "https://overpass-api.de/api/interpreter",
+            ),
+            fallback_endpoints=_comma_separated_values(
+                environ.get(
+                    "SITE_SELECTION_OVERPASS_FALLBACK_ENDPOINTS",
+                    "",
+                )
             ),
             rate_limiter=rate_limiter,
             timeout_seconds=timeout_seconds,
@@ -204,21 +228,44 @@ def build_configured_poi_provider(
         ),
     )
     active: POISourceAdapter = reliable
-    if _boolean(environ, "SITE_SELECTION_POI_FALLBACK_ENABLED", True):
+    if _boolean(
+        environ,
+        "SITE_SELECTION_POI_POSTGIS_RECOVERY_ENABLED",
+        True,
+    ):
+        # Recover only previously persisted real OSM rows before considering
+        # the explicit Fixture fallback.  This does not enable Fixture mode.
+        active = PostGISPOIRecoveryAdapter(active, engine)
+    fallback_enabled = _boolean(
+        environ,
+        "SITE_SELECTION_POI_FALLBACK_ENABLED",
+        True,
+    )
+    if fallback_enabled:
         active = FallbackPOIAdapter(active, fixture_adapter)
     if _boolean(environ, "SITE_SELECTION_POI_PERSIST_ENABLED", True):
         active = PersistingPOIAdapter(
             active,
             _PostGISPOIFeatureSink(engine),
         )
+    cache_scope = (
+        f"workflow:{resolved_mode}:"
+        f"{getattr(primary, 'cache_token', type(primary).__name__)}"
+    )
     active = CachedPOIAdapter(
         active,
         cache_store,
-        cache_scope=(
-            f"workflow:{resolved_mode}:"
-            f"{getattr(primary, 'cache_token', type(primary).__name__)}"
-        ),
+        cache_scope=cache_scope,
     )
+    if resolved_mode == "overpass" and not fallback_enabled:
+        active = CategoryPartitioningPOIAdapter(active)
+        # Keep an outer group cache for compatibility with existing Redis
+        # entries, while the inner cache stores successful category queries.
+        active = CachedPOIAdapter(
+            active,
+            cache_store,
+            cache_scope=cache_scope,
+        )
     return ConfiguredPOIProvider(
         requested_mode=requested_mode,
         resolved_mode=resolved_mode,
@@ -281,6 +328,16 @@ def _positive_int(
             f"{name} 必须是正整数"
         )
     return value
+
+
+def _comma_separated_values(value: str) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            item.strip()
+            for item in value.split(",")
+            if item.strip()
+        )
+    )
 
 
 def _positive_float(

@@ -164,6 +164,40 @@ def test_snapshot_gateway_preserves_unknown_completeness() -> None:
     assert "未配置候选点 POI 补采网关" in result.source.evidence_supplement_error
 
 
+def test_truncated_nearest_osm_snapshot_reuses_proven_complete_slice() -> None:
+    broad = broad_feature_set(truncated=True)
+    bounded = POIFeatureSet(
+        query=broad.query.model_copy(update={"limit": len(broad.records)}),
+        records=[record.model_copy(deep=True) for record in broad.records],
+        source=broad.source.model_copy(deep=True),
+        metrics=dict(broad.metrics),
+    )
+    frozen = build_candidate_discovery_poi_snapshot(
+        discovery_request_id="discover-covered",
+        project_type=ProjectType.COFFEE_SHOP,
+        created_at=NOW,
+        candidates=[candidate()],
+        feature_sets=[bounded],
+        snapshot_id="poi-snapshot-covered",
+    )
+
+    class RaisingFallback:
+        def search(self, query: POIQuery) -> POIFeatureSet:
+            raise AssertionError(f"unexpected supplement: {query.query_id}")
+
+    result = SnapshotReusingPOIGateway(
+        frozen,
+        fallback=RaisingFallback(),
+    ).search(formal_query())
+
+    assert [record.poi_id for record in result.records] == ["bus-near"]
+    assert result.source.evidence_reused is True
+    assert result.source.evidence_supplemented is False
+    assert result.source.evidence_supplement_reason is None
+    assert result.source.evidence_supplement_error is None
+    assert result.source.is_truncated is False
+
+
 def test_snapshot_gateway_enforces_formal_query_limit() -> None:
     result = SnapshotReusingPOIGateway(snapshot()).search(
         formal_query(radius_m=1_000, limit=1)
@@ -255,6 +289,82 @@ def test_truncated_snapshot_uses_candidate_centered_formal_query() -> None:
     assert result.source.evidence_reused is False
     assert result.source.evidence_supplemented is True
     assert result.source.evidence_supplement_reason == "snapshot_truncated"
+
+
+def test_snapshot_batch_bounds_supplements_by_complete_scoring_group() -> None:
+    transit = broad_feature_set(truncated=True)
+    secondary = transit.model_copy(
+        deep=True,
+        update={
+            "query": transit.query.model_copy(
+                update={
+                    "query_id": "discover-001:scope:secondary",
+                    "group_key": "secondary",
+                }
+            )
+        },
+    )
+    frozen = build_candidate_discovery_poi_snapshot(
+        discovery_request_id="discover-batch",
+        project_type=ProjectType.COFFEE_SHOP,
+        created_at=NOW,
+        candidates=[candidate()],
+        feature_sets=[transit, secondary],
+        snapshot_id="poi-snapshot-batch",
+    )
+
+    class RecordingFallback:
+        def __init__(self) -> None:
+            self.queries = []
+
+        def search(self, query: POIQuery) -> POIFeatureSet:
+            self.queries.append(query)
+            return POIFeatureSet(
+                query=query,
+                source=POISourceMeta(
+                    provider=POIProvider.OSM,
+                    dataset_id="candidate-local-live",
+                    queried_at=NOW,
+                    record_count=0,
+                    available_record_count=0,
+                ),
+            )
+
+    queries = [
+        formal_query().model_copy(
+            update={
+                "query_id": f"analysis:transit:{index}",
+                "parcel_id": f"candidate-transit-{index}",
+            }
+        )
+        for index in range(3)
+    ]
+    queries.extend(
+        formal_query(group_key="secondary").model_copy(
+            update={
+                "query_id": f"analysis:secondary:{index}",
+                "parcel_id": f"candidate-secondary-{index}",
+            }
+        )
+        for index in range(2)
+    )
+    fallback = RecordingFallback()
+
+    results = SnapshotReusingPOIGateway(
+        frozen,
+        fallback=fallback,
+        max_supplement_queries=2,
+    ).search_many(queries, max_workers=2)
+
+    assert [result.query for result in results] == queries
+    assert {query.group_key for query in fallback.queries} == {"secondary"}
+    assert len(fallback.queries) == 2
+    assert all(
+        result.source.evidence_supplement_error is not None
+        and "单轮查询预算" in result.source.evidence_supplement_error
+        for result in results[:3]
+    )
+    assert all(result.source.evidence_supplemented for result in results[3:])
 
 
 def test_snapshot_gateway_supplements_missing_categories() -> None:

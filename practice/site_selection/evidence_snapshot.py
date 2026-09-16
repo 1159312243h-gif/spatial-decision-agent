@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from hashlib import sha256
 from typing import Protocol
@@ -10,9 +11,15 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .domain import CandidateParcel, NonEmptyString, ProjectType
-from .poi import POIFeatureSet, POIQuery
+from .poi import POIFeatureSet, POIProvider, POIQuery
 from .poi_adapters import haversine_distance_m
 from .poi_service import POIGateway, calculate_poi_metrics
+
+
+DEFAULT_SNAPSHOT_SUPPLEMENT_MAX_QUERIES = 8
+SNAPSHOT_SUPPLEMENT_BUDGET_EXHAUSTED = (
+    "候选点在线补查超过单轮查询预算，已保留发现快照切片"
+)
 
 
 class CandidateDiscoverySnapshotError(RuntimeError):
@@ -159,9 +166,13 @@ class SnapshotReusingPOIGateway:
         snapshot: CandidateDiscoveryPOISnapshot,
         *,
         fallback: POIGateway | None = None,
+        max_supplement_queries: int = DEFAULT_SNAPSHOT_SUPPLEMENT_MAX_QUERIES,
     ) -> None:
+        if max_supplement_queries <= 0:
+            raise ValueError("候选点 POI 补查查询预算必须大于 0")
         self._snapshot = snapshot.model_copy(deep=True)
         self._fallback = fallback
+        self._max_supplement_queries = max_supplement_queries
         self._by_group = {
             item.query.group_key: item for item in self._snapshot.feature_sets
         }
@@ -181,6 +192,81 @@ class SnapshotReusingPOIGateway:
             )
         assert broad is not None
         return self._slice_snapshot(query, broad)
+
+    def search_many(
+        self,
+        queries: Sequence[POIQuery],
+        *,
+        max_workers: int = 4,
+    ) -> list[POIFeatureSet]:
+        """Reuse local slices and bound candidate supplements by whole cohort."""
+
+        if max_workers <= 0:
+            raise ValueError("POI query worker count must be positive")
+        query_list = list(queries)
+        if not query_list:
+            return []
+
+        reasons = [
+            _supplement_reason(query, self._by_group.get(query.group_key))
+            for query in query_list
+        ]
+        indexed_queries = enumerate(
+            zip(query_list, reasons, strict=True)
+        )
+        mandatory_indexes = {
+            index
+            for index, (query, reason) in indexed_queries
+            if reason is not None and self._by_group.get(query.group_key) is None
+        }
+        cohort_indexes: dict[str, list[int]] = {}
+        for index, (query, reason) in enumerate(zip(query_list, reasons, strict=True)):
+            if reason is None or index in mandatory_indexes:
+                continue
+            cohort_indexes.setdefault(query.group_key, []).append(index)
+
+        selected_indexes = set(mandatory_indexes)
+        remaining_budget = max(
+            0,
+            self._max_supplement_queries - len(mandatory_indexes),
+        )
+        # Keep a scoring group comparable across candidates. Larger cohorts are
+        # preferred when they fit, recovering the most candidate evidence per
+        # bounded batch instead of spending the budget on scattered groups.
+        ordered_cohorts = sorted(
+            cohort_indexes.values(),
+            key=lambda indexes: (-len(indexes), indexes[0]),
+        )
+        for indexes in ordered_cohorts:
+            if len(indexes) > remaining_budget:
+                continue
+            selected_indexes.update(indexes)
+            remaining_budget -= len(indexes)
+
+        def execute(index: int) -> POIFeatureSet:
+            query = query_list[index]
+            reason = reasons[index]
+            broad = self._by_group.get(query.group_key)
+            if (
+                reason is not None
+                and broad is not None
+                and index not in selected_indexes
+            ):
+                return self._slice_snapshot(
+                    query,
+                    broad,
+                    supplement_reason=reason,
+                    supplement_error=SNAPSHOT_SUPPLEMENT_BUDGET_EXHAUSTED,
+                )
+            return self.search(query)
+
+        if len(query_list) == 1 or max_workers == 1:
+            return [execute(index) for index in range(len(query_list))]
+        with ThreadPoolExecutor(
+            max_workers=min(max_workers, len(query_list)),
+            thread_name_prefix="snapshot-poi",
+        ) as executor:
+            return list(executor.map(execute, range(len(query_list))))
 
     def _supplement(
         self,
@@ -277,7 +363,10 @@ class SnapshotReusingPOIGateway:
         filtered.sort(key=lambda item: (item.distance_m or 0, item.poi_id))
         returned = filtered[: query.limit]
         completeness_unknown = (
-            broad.source.is_truncated
+            (
+                broad.source.is_truncated
+                and not _truncated_snapshot_covers_query(query, broad)
+            )
             or not categories.issubset(snapshot_categories)
         )
         available_record_count = len(filtered)
@@ -315,9 +404,41 @@ def _supplement_reason(
         return "snapshot_missing_categories"
     if broad.source.is_synthetic or broad.source.fallback_from is not None:
         return "snapshot_synthetic_fallback"
-    if broad.source.is_truncated:
+    if (
+        broad.source.is_truncated
+        and not _truncated_snapshot_covers_query(query, broad)
+    ):
         return "snapshot_truncated"
     return None
+
+
+def _truncated_snapshot_covers_query(
+    query: POIQuery,
+    broad: POIFeatureSet,
+) -> bool:
+    """Prove a local OSM circle lies inside the retained nearest-record radius."""
+
+    source = broad.source
+    if (
+        not source.is_truncated
+        or source.provider is not POIProvider.OSM
+        or source.is_synthetic
+        or source.fallback_from is not None
+        or source.record_count != broad.query.limit
+        or not broad.records
+        or any(record.distance_m is None for record in broad.records)
+    ):
+        return False
+    retained_radius_m = max(
+        float(record.distance_m or 0) for record in broad.records
+    )
+    center_distance_m = haversine_distance_m(
+        broad.query.longitude,
+        broad.query.latitude,
+        query.longitude,
+        query.latitude,
+    )
+    return center_distance_m + query.radius_m < retained_radius_m
 
 
 def _degraded_supplement_error(

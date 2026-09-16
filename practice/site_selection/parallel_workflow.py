@@ -362,6 +362,9 @@ def build_parallel_site_selection_graph(
         started_at = perf_counter()
         try:
             output = review_agent.run(ReviewAgentInput(state=merged))
+            final_state = output.state
+            if dependencies.multi_agent_runtime is not None:
+                final_state = dependencies.multi_agent_runtime.review(final_state)
         except Exception as exc:
             return {
                 "final_state": _failed_state(
@@ -381,7 +384,7 @@ def build_parallel_site_selection_graph(
             }
         return {
             "final_state": _state_with_traces(
-                output.state,
+                final_state,
                 plan,
                 [
                     *merged.agent_trace,

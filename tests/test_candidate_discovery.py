@@ -50,8 +50,13 @@ from practice.site_selection.poi_adapters import (
     FixturePOIAdapter,
     haversine_distance_m,
 )
+from practice.site_selection.online_poi_adapters import (
+    FallbackPOIAdapter,
+    POIUpstreamError,
+)
 from practice.site_selection.candidate_discovery import (
     _repair_incomplete_scoring_evidence,
+    _search_queries_retaining_availability_failures,
 )
 from practice.site_selection.spatial import MockSpatialDatasetGateway
 
@@ -203,6 +208,89 @@ def broad_feature_sets(*, target_mode: str = "complete") -> list[POIFeatureSet]:
     return feature_sets
 
 
+def test_category_availability_failure_is_retained_without_grid_retry() -> None:
+    profile = get_project_profile(ProjectType.COFFEE_SHOP)
+    feature_sets = broad_feature_sets()
+    target_index = next(
+        index
+        for index, item in enumerate(feature_sets)
+        if item.query.group_key == "stay_environment"
+    )
+    target = feature_sets[target_index]
+    partial_records = [
+        item for item in target.records if item.category != "公园"
+    ]
+    partial_source = POISourceMeta.model_validate(
+        {
+            **target.source.model_dump(),
+            "record_count": len(partial_records),
+            "available_record_count": len(partial_records) + 1,
+            "is_truncated": True,
+            "unavailable_categories": ["公园"],
+            "availability_warnings": ["公园：POIUpstreamError：HTTP 504"],
+        }
+    )
+    feature_sets[target_index] = POIFeatureSet(
+        query=target.query,
+        records=partial_records,
+        source=partial_source,
+    )
+
+    class NoRetryGateway:
+        def search(self, query):
+            raise AssertionError("类别级上游失败不应立即触发分区重试")
+
+    repaired, statuses, warnings = _repair_incomplete_scoring_evidence(
+        discovery_request(),
+        profile,
+        NoRetryGateway(),
+        feature_sets,
+    )
+
+    retained = next(
+        item for item in repaired if item.query.group_key == "stay_environment"
+    )
+    status = next(
+        item for item in statuses if item.group_key == "stay_environment"
+    )
+    assert retained == feature_sets[target_index]
+    assert status.query_count == 0
+    assert any("上游查询失败类别：公园" in item for item in status.remaining_reasons)
+    assert all("stay_environment 已执行 2×2" not in item for item in warnings)
+
+
+def test_failed_scoring_group_does_not_discard_other_real_groups() -> None:
+    queries = [item.query for item in broad_feature_sets()]
+
+    class PartlyUnavailableGateway:
+        provider = POIProvider.OSM
+
+        def search(self, query):
+            if query.group_key == "stay_environment":
+                raise POIUpstreamError("Overpass HTTP 429/504")
+            return next(
+                item
+                for item in broad_feature_sets()
+                if item.query.group_key == query.group_key
+            ).model_copy(deep=True, update={"query": query})
+
+    results = _search_queries_retaining_availability_failures(
+        PartlyUnavailableGateway(),
+        queries,
+    )
+
+    assert len(results) == len(queries)
+    assert sum(bool(item.records) for item in results) == len(queries) - 1
+    failed = next(
+        item for item in results if item.query.group_key == "stay_environment"
+    )
+    assert failed.source.provider is POIProvider.OSM
+    assert failed.source.is_synthetic is False
+    assert failed.source.is_truncated is True
+    assert failed.source.unavailable_categories == failed.query.categories
+    assert "HTTP 429/504" in failed.source.availability_warnings[0]
+
+
 def fixture_frames():
     seed = load_fixture_spatial_seed(FIXTURE_ROOT / "spatial_layers.json")
     return {
@@ -310,6 +398,39 @@ def test_discovery_is_land_use_gated_diversified_and_auditable() -> None:
     }
     assert any("合成 Fixture" in warning for warning in report.warnings)
     assert report.total_elapsed_ms >= 0
+
+
+def test_discovery_returns_fixture_promptly_when_online_provider_is_unavailable() -> None:
+    class UnavailablePOIAdapter:
+        max_categories_per_query = 3
+        provider = POIProvider.OSM
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def search(self, query):
+            self.calls += 1
+            raise POIUpstreamError("测试 Provider 不可用")
+
+    primary = UnavailablePOIAdapter()
+    fixture = FixturePOIAdapter.from_json(FIXTURE_ROOT / "poi.json")
+    registry = build_fixture_runtime_registry(
+        object(),
+        fixture_root=FIXTURE_ROOT,
+        spatial_gateway=MockSpatialDatasetGateway(fixture_frames()),
+        poi_adapter=FallbackPOIAdapter(primary, fixture),
+    )
+
+    report = CandidateDiscoveryService(registry).discover(discovery_request())
+
+    assert report.candidates
+    assert primary.calls == 2
+    assert any("跳过分区补查" in warning for warning in report.warnings)
+    assert all(
+        item.fallback_from is POIProvider.OSM
+        for item in report.sources
+        if item.purpose.value in {"scoring", "range_context"}
+    )
 
 
 def test_discovery_runtime_graph_nodes_are_the_reviewed_plan_nodes() -> None:
@@ -727,6 +848,97 @@ def test_complete_online_scoring_evidence_skips_discovery_repair() -> None:
     assert warnings == []
 
 
+def test_saturated_category_complete_online_result_skips_discovery_repair() -> None:
+    feature_sets = broad_feature_sets()
+    transit = next(
+        item
+        for item in feature_sets
+        if item.query.group_key == "transit_access"
+    )
+    records = [
+        POIRecord(
+            poi_id=f"saturated:{index}",
+            name=f"上限记录 {index}",
+            category=transit.query.categories[index % len(transit.query.categories)],
+            longitude=transit.query.longitude,
+            latitude=transit.query.latitude,
+            distance_m=0,
+        )
+        for index in range(transit.query.limit)
+    ]
+    saturated = POIFeatureSet(
+        query=transit.query.model_copy(deep=True),
+        records=records,
+        source=transit.source.model_copy(
+            deep=True,
+            update={
+                "record_count": transit.query.limit,
+                "available_record_count": transit.query.limit + 1_542,
+                "is_truncated": True,
+            },
+        ),
+    )
+    feature_sets[feature_sets.index(transit)] = saturated
+    gateway = ScriptedRepairPOIAdapter([])
+
+    repaired, statuses, warnings = _repair_incomplete_scoring_evidence(
+        discovery_request(),
+        get_project_profile(ProjectType.COFFEE_SHOP),
+        gateway,
+        feature_sets,
+    )
+
+    repaired_transit = next(
+        item for item in repaired if item.query.group_key == "transit_access"
+    )
+    transit_status = next(
+        item for item in statuses if item.group_key == "transit_access"
+    )
+    assert not gateway.queries
+    assert repaired_transit.source.is_truncated is True
+    assert transit_status.query_count == 0
+    assert transit_status.evidence_complete is False
+    assert "返回截断或空间覆盖未完成" in transit_status.remaining_reasons
+    assert any("跳过同步分区补查" in warning for warning in warnings)
+
+
+def test_all_fallback_scoring_evidence_skips_expensive_repair() -> None:
+    original = broad_feature_sets()
+    fallback = [
+        item.model_copy(
+            deep=True,
+            update={
+                "source": item.source.model_copy(
+                    deep=True,
+                    update={
+                        "provider": POIProvider.MOCK,
+                        "dataset_id": "mock-fallback-test",
+                        "is_synthetic": True,
+                        "quality_notice": "测试 Fixture",
+                        "fallback_from": POIProvider.OSM,
+                        "fallback_reason": "POIUpstreamError",
+                    },
+                )
+            },
+        )
+        for item in original
+    ]
+    gateway = ScriptedRepairPOIAdapter([])
+
+    repaired, statuses, warnings = _repair_incomplete_scoring_evidence(
+        discovery_request(),
+        get_project_profile(ProjectType.COFFEE_SHOP),
+        gateway,
+        fallback,
+    )
+
+    assert not gateway.queries
+    assert repaired == fallback
+    assert all(item.query_count == 0 for item in statuses)
+    assert all(not item.evidence_complete for item in statuses)
+    assert any("全部不可用" in warning for warning in warnings)
+
+
 def test_multiple_incomplete_groups_share_one_interleaved_repair_batch(
     monkeypatch,
 ) -> None:
@@ -894,3 +1106,72 @@ def test_failed_discovery_repair_retains_original_fallback_and_audit_warning() -
     assert transit.source.fallback_from is POIProvider.OSM
     assert any("未恢复真实在线数据" in item for item in status.remaining_reasons)
     assert any("RuntimeError" in warning for warning in warnings)
+
+
+class FallbackAwarePOIGateway:
+    max_categories_per_query = 3
+
+    def __init__(self) -> None:
+        self.primary_queries = []
+        self.fallback_queries = []
+
+    def search(self, query):
+        self.primary_queries.append(query.model_copy(deep=True))
+        return repair_feature_set(
+            query,
+            provider=POIProvider.MOCK,
+            category=query.categories[0],
+            fallback=True,
+        )
+
+    def search_fallback(self, query, *, source_template=None):
+        self.fallback_queries.append(query.model_copy(deep=True))
+        return repair_feature_set(
+            query,
+            provider=POIProvider.MOCK,
+            category=query.categories[0],
+            fallback=True,
+        )
+
+
+def fallback_probe_queries() -> list[POIQuery]:
+    return [
+        POIQuery(
+            query_id=f"probe:{index}",
+            parcel_id="candidate-discovery-scope",
+            group_key=f"probe_{index}",
+            longitude=121.33,
+            latitude=31.16,
+            categories=["地铁站"],
+            radius_m=1_000,
+            limit=20,
+        )
+        for index in range(1, 4)
+    ]
+
+
+def test_search_queries_reuses_fallback_after_first_provider_probe() -> None:
+    gateway = FallbackAwarePOIGateway()
+
+    results = candidate_discovery_module._search_queries(
+        gateway,
+        fallback_probe_queries(),
+    )
+
+    assert len(results) == 3
+    assert len(gateway.primary_queries) == 1
+    assert len(gateway.fallback_queries) == 2
+
+
+def test_optional_search_queries_reuses_fallback_after_first_provider_probe() -> None:
+    gateway = FallbackAwarePOIGateway()
+
+    results, warnings = candidate_discovery_module._search_optional_queries(
+        gateway,
+        fallback_probe_queries(),
+    )
+
+    assert len(results) == 3
+    assert warnings == []
+    assert len(gateway.primary_queries) == 1
+    assert len(gateway.fallback_queries) == 2

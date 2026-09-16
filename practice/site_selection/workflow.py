@@ -7,6 +7,8 @@ from typing import Any, Literal
 from langgraph.graph import END, START, StateGraph
 
 from .comparison import CandidateComparisonBlockedError, compare_candidate_results
+from .agent_collaboration import MultiAgentReviewRuntime
+from .agent_harness import AgentHarness
 from .analysis_scope import (
     is_market_selection,
     mark_market_policy_unverified,
@@ -58,6 +60,7 @@ class SiteSelectionWorkflowDependencies:
     rules: Sequence[RuleDefinition]
     buffer_distance_m: float = 500
     site_scoring_config: SiteScoringConfig | None = None
+    multi_agent_runtime: MultiAgentReviewRuntime | AgentHarness | None = None
 
     def __post_init__(self) -> None:
         specs = tuple(self.constraint_specs)
@@ -188,7 +191,13 @@ def build_site_selection_graph(
     )
     builder.add_node(
         "evidence_review",
-        _safe_node("evidence_review", review_site_selection_evidence),
+        _safe_node(
+            "evidence_review",
+            lambda state: _review_with_optional_collaboration(
+                state,
+                dependencies.multi_agent_runtime,
+            ),
+        ),
     )
     builder.add_node("failed", _failed_node)
 
@@ -281,6 +290,14 @@ def _collect_ready_gis_evidence(
             "GIS 强制证据未就绪：" + " | ".join(issues)
         )
     return result
+
+
+def _review_with_optional_collaboration(
+    state: AgentState,
+    runtime: MultiAgentReviewRuntime | AgentHarness | None,
+) -> AgentState:
+    reviewed = review_site_selection_evidence(state)
+    return runtime.review(reviewed) if runtime is not None else reviewed
 
 
 _EXPECTED_ERRORS = (

@@ -220,9 +220,9 @@ class OverpassLandUseProvider:
     def search(self, query: LandUseQuery) -> LandUseFeatureSet:
         statement = self._build_query(query)
         try:
-            response = self._http_client.post(
+            response = self._http_client.get(
                 self._endpoint,
-                data={"data": statement},
+                params={"data": statement},
                 timeout=self._timeout_seconds,
             )
         except Exception as exc:

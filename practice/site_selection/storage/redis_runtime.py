@@ -98,7 +98,7 @@ class RedisSiteSelectionRuntimeStore:
         namespace: str = "site_selection",
         run_ttl_seconds: int = 86_400,
         idempotency_ttl_seconds: int = 86_400,
-        poi_cache_ttl_seconds: int = 3_600,
+        poi_cache_ttl_seconds: int = 21_600,
         land_use_cache_ttl_seconds: int = 3_600,
         discovery_snapshot_ttl_seconds: int | None = None,
         event_ttl_seconds: int = 86_400,

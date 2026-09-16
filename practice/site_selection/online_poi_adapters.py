@@ -229,6 +229,127 @@ class RetryingCircuitBreakerPOIAdapter:
                 )
 
 
+class PostGISPOIRecoveryAdapter:
+    """Recover real OSM evidence already persisted in PostGIS after an outage.
+
+    This is deliberately different from ``FallbackPOIAdapter``: it never
+    creates synthetic records and it only returns rows previously written by
+    the live provider.  If the database has no matching rows, the original
+    availability error is re-raised so fail-closed behaviour is preserved.
+    """
+
+    def __init__(
+        self,
+        primary: POISourceAdapter,
+        engine: Any,
+        *,
+        clock: Callable[[], datetime] | None = None,
+        dataset_id: str | None = None,
+    ) -> None:
+        if primary is None:
+            raise ValueError("PostGIS 恢复 Adapter 必须配置 primary")
+        if engine is None:
+            raise ValueError("PostGIS 恢复 Adapter 必须配置数据库引擎")
+        self._primary = primary
+        self._engine = engine
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._dataset_id = (
+            dataset_id.strip()
+            if dataset_id is not None
+            else f"{_provider_of(primary).value}-postgis"
+        )
+        if not self._dataset_id:
+            raise ValueError("PostGIS 恢复数据集名称不能为空")
+
+    @property
+    def provider(self) -> POIProvider:
+        # Keep the upstream identity so evidence review and snapshot
+        # validation continue to recognise recovered real evidence.
+        return _provider_of(self._primary)
+
+    @property
+    def cache_token(self) -> str:
+        primary = getattr(self._primary, "cache_token", type(self._primary).__name__)
+        return f"postgis-recovery:{primary}"
+
+    @property
+    def max_categories_per_query(self) -> int | None:
+        return _max_categories_per_query(self._primary)
+
+    def search(self, query: POIQuery) -> POIFeatureSet:
+        try:
+            return self._primary.search(query)
+        except POIAvailabilityError as primary_error:
+            recovered = self._search_postgis(query)
+            if recovered is None:
+                raise primary_error
+            return recovered
+
+    def _search_postgis(self, query: POIQuery) -> POIFeatureSet | None:
+        try:
+            # Import lazily: storage.postgres imports spatial modules, whose
+            # package exports refer back to storage.postgres during startup.
+            # Keeping this dependency inside the recovery path avoids that
+            # unrelated circular import when the API module is loaded.
+            from .storage.poi_repository import PostgresPOIRepository
+
+            with self._engine.begin() as connection:
+                rows = PostgresPOIRepository(connection).search_nearby(
+                    longitude=query.longitude,
+                    latitude=query.latitude,
+                    radius_m=query.radius_m,
+                    categories=list(query.categories),
+                    source=self.provider.value,
+                    limit=query.limit,
+                )
+        except Exception:
+            # A database outage must not hide the original provider failure or
+            # turn an availability error into an unexpected 500 response.
+            return None
+        if not rows:
+            return None
+
+        records = [
+            POIRecord(
+                poi_id=f"{self.provider.value}:{row.source_id}",
+                name=row.name,
+                category=row.category,
+                longitude=row.longitude,
+                latitude=row.latitude,
+                distance_m=row.distance_m,
+                attributes={
+                    "source": self.provider.value,
+                    "source_id": row.source_id,
+                    "source_crs": row.source_crs,
+                    "address": row.address,
+                    "postgis_recovered": True,
+                    "persisted_created_at": row.created_at.isoformat(),
+                    "persisted_updated_at": row.updated_at.isoformat(),
+                    "raw_payload": row.raw_payload,
+                },
+            )
+            for row in rows
+        ]
+        latest_update = max(row.updated_at for row in rows)
+        source = POISourceMeta(
+            provider=self.provider,
+            dataset_id=self._dataset_id,
+            dataset_version=latest_update.isoformat(),
+            dataset_updated_at=latest_update,
+            queried_at=self._clock(),
+            record_count=len(records),
+            available_record_count=len(records),
+            is_truncated=False,
+            is_synthetic=False,
+        )
+        return POIFeatureSet(
+            query=query.model_copy(deep=True),
+            records=records,
+            source=source,
+            metrics=calculate_poi_metrics(query, records),
+        )
+
+
 class CachedPOIAdapter:
     """Reuse normalized Provider results while preserving the active query identity."""
 
@@ -258,6 +379,10 @@ class CachedPOIAdapter:
         return f"cached:{self._cache_scope}:{delegate_token}"
 
     @property
+    def provider(self) -> POIProvider:
+        return _provider_of(self._delegate)
+
+    @property
     def max_categories_per_query(self) -> int | None:
         return _max_categories_per_query(self._delegate)
 
@@ -282,12 +407,112 @@ class CachedPOIAdapter:
             raise ValueError("POI delegate 返回了与请求不一致的查询")
         # A fallback is a temporary availability result, not a durable answer
         # for the online cache key. Caching it would suppress upstream recovery.
-        if result.source.fallback_from is None:
+        if (
+            result.source.fallback_from is None
+            and not result.source.unavailable_categories
+        ):
             self._cache.save_cached_poi(
                 result,
                 cache_scope=self._cache_scope,
             )
         return result
+
+    def search_fallback(
+        self,
+        query: POIQuery,
+        *,
+        source_template: POISourceMeta | None = None,
+    ) -> POIFeatureSet:
+        """Use a known fallback without probing an unavailable Provider again."""
+        cached = self._cache.get_cached_poi(
+            query,
+            cache_scope=self._cache_scope,
+        )
+        if cached is not None:
+            return cached.model_copy(
+                deep=True,
+                update={
+                    "query": query.model_copy(deep=True),
+                    "source": cached.source.model_copy(
+                        deep=True,
+                        update={"cache_hit": True},
+                    ),
+                },
+            )
+        delegate_search = getattr(self._delegate, "search_fallback", None)
+        if not callable(delegate_search):
+            return self.search(query)
+        result = delegate_search(query, source_template=source_template)
+        if result.query != query:
+            raise ValueError("POI fallback delegate 返回了与请求不一致的查询")
+        return result
+
+
+class CategoryPartitioningPOIAdapter:
+    """Query expensive providers per category and retain auditable partial data."""
+
+    def __init__(
+        self,
+        delegate: POISourceAdapter,
+        *,
+        categories_per_partition: int = 1,
+    ) -> None:
+        if delegate is None:
+            raise ValueError("类别隔离 POI Adapter 必须配置 delegate")
+        if categories_per_partition <= 0:
+            raise ValueError("POI 类别分区大小必须是正整数")
+        self._delegate = delegate
+        self._categories_per_partition = categories_per_partition
+
+    @property
+    def cache_token(self) -> str:
+        delegate_token = getattr(
+            self._delegate,
+            "cache_token",
+            type(self._delegate).__name__,
+        )
+        return (
+            f"category-partitioned:{delegate_token}:"
+            f"size={self._categories_per_partition}"
+        )
+
+    @property
+    def provider(self) -> POIProvider:
+        return _provider_of(self._delegate)
+
+    @property
+    def max_categories_per_query(self) -> int | None:
+        return _max_categories_per_query(self._delegate)
+
+    def search(self, query: POIQuery) -> POIFeatureSet:
+        if len(query.categories) <= self._categories_per_partition:
+            return self._delegate.search(query)
+
+        successful: list[POIFeatureSet] = []
+        failures: list[tuple[list[str], POIAvailabilityError]] = []
+        for index, categories in enumerate(
+            _chunks(query.categories, self._categories_per_partition),
+            start=1,
+        ):
+            partition_query = query.model_copy(
+                deep=True,
+                update={
+                    "query_id": f"{query.query_id}:category:{index:02d}",
+                    "categories": categories,
+                },
+            )
+            try:
+                successful.append(self._delegate.search(partition_query))
+            except POIAvailabilityError as exc:
+                failures.append((categories, exc))
+
+        if not successful:
+            details = "；".join(
+                f"{'、'.join(categories)}：{str(error).strip() or type(error).__name__}"
+                for categories, error in failures
+            )
+            raise POIUpstreamError("POI 各类别查询均不可用：" + details)
+        return _merge_category_partitions(query, successful, failures)
 
 
 class PersistingPOIAdapter:
@@ -313,6 +538,10 @@ class PersistingPOIAdapter:
         return f"persisted:{delegate_token}"
 
     @property
+    def provider(self) -> POIProvider:
+        return _provider_of(self._delegate)
+
+    @property
     def max_categories_per_query(self) -> int | None:
         return _max_categories_per_query(self._delegate)
 
@@ -320,6 +549,21 @@ class PersistingPOIAdapter:
         result = self._delegate.search(query)
         if result.query != query:
             raise ValueError("POI delegate 返回了与请求不一致的查询")
+        self._sink.save(result)
+        return result
+
+    def search_fallback(
+        self,
+        query: POIQuery,
+        *,
+        source_template: POISourceMeta | None = None,
+    ) -> POIFeatureSet:
+        delegate_search = getattr(self._delegate, "search_fallback", None)
+        if not callable(delegate_search):
+            return self.search(query)
+        result = delegate_search(query, source_template=source_template)
+        if result.query != query:
+            raise ValueError("POI fallback delegate 返回了与请求不一致的查询")
         self._sink.save(result)
         return result
 
@@ -631,7 +875,9 @@ class OverpassPOIAdapter:
         http_client: POIHTTPClient,
         category_filters: Mapping[str, OverpassTagFilter],
         *,
+        category_element_types: Mapping[str, Sequence[str]] | None = None,
         endpoint: str = "https://overpass-api.de/api/interpreter",
+        fallback_endpoints: Sequence[str] = (),
         rate_limiter: RequestRateLimiter | None = None,
         timeout_seconds: float = 15,
         max_categories_per_query: int = 3,
@@ -642,7 +888,16 @@ class OverpassPOIAdapter:
             raise ValueError("Overpass POI Adapter 必须配置 HTTP Client")
         if not category_filters:
             raise ValueError("Overpass POI Adapter 至少需要一个类别标签映射")
-        if not endpoint.startswith("https://"):
+        endpoints = tuple(
+            dict.fromkeys(
+                candidate.strip()
+                for candidate in (endpoint, *fallback_endpoints)
+                if candidate.strip()
+            )
+        )
+        if not endpoints or any(
+            not candidate.startswith("https://") for candidate in endpoints
+        ):
             raise ValueError("Overpass endpoint 必须使用 HTTPS")
         if timeout_seconds <= 0:
             raise ValueError("Overpass POI 超时必须大于 0")
@@ -658,7 +913,33 @@ class OverpassPOIAdapter:
         }
         if len(self._category_filters) != len(category_filters):
             raise ValueError("Overpass 类别名称不能为空")
-        self._endpoint = endpoint
+        element_types = category_element_types or {}
+        unknown_element_type_categories = set(element_types) - set(
+            self._category_filters
+        )
+        if unknown_element_type_categories:
+            raise ValueError(
+                "Overpass 元素类型配置包含未知类别："
+                + ", ".join(sorted(unknown_element_type_categories))
+            )
+        self._category_element_types: dict[str, tuple[str, ...]] = {}
+        allowed_element_types = {"node", "way", "relation"}
+        for category, configured_types in element_types.items():
+            normalized_types = tuple(
+                dict.fromkeys(
+                    element_type.strip()
+                    for element_type in configured_types
+                    if element_type.strip()
+                )
+            )
+            if not normalized_types or not set(normalized_types).issubset(
+                allowed_element_types
+            ):
+                raise ValueError(
+                    f"Overpass 类别 {category} 的元素类型必须是 node、way 或 relation"
+                )
+            self._category_element_types[category] = normalized_types
+        self._endpoints = endpoints
         self._rate_limiter = rate_limiter or NoopRateLimiter()
         self._timeout_seconds = timeout_seconds
         self._max_categories_per_query = max_categories_per_query
@@ -667,6 +948,8 @@ class OverpassPOIAdapter:
 
     @property
     def cache_token(self) -> str:
+        # Keep this token stable across query-planner improvements so existing
+        # real POI Redis entries remain reusable after a container rebuild.
         return (
             f"overpass:{self._cache_version}:"
             f"categories={self._max_categories_per_query}"
@@ -683,22 +966,42 @@ class OverpassPOIAdapter:
                 "Overpass 缺少类别标签映射：" + ", ".join(missing)
             )
         statement = self._build_query(query)
-        self._rate_limiter.acquire()
-        try:
-            response = self._http_client.post(
-                self._endpoint,
-                data={"data": statement},
-                timeout=self._timeout_seconds,
-            )
-        except Exception as exc:
+        response = None
+        failures = []
+        last_error: POIAvailabilityError | None = None
+        for endpoint in self._endpoints:
+            self._rate_limiter.acquire()
+            try:
+                candidate_response = self._http_client.get(
+                    endpoint,
+                    params={"data": statement},
+                    timeout=self._timeout_seconds,
+                )
+            except Exception as exc:
+                last_error = POIUpstreamError(
+                    f"{endpoint} 网络请求失败：{type(exc).__name__}"
+                )
+                failures.append(str(last_error))
+                continue
+            if candidate_response.status_code == 429:
+                last_error = POIRateLimitError(
+                    f"{endpoint} 请求受到 HTTP 429 限流"
+                )
+                failures.append(str(last_error))
+                continue
+            if candidate_response.status_code >= 500:
+                last_error = POIUpstreamError(
+                    f"{endpoint} 服务异常：HTTP {candidate_response.status_code}"
+                )
+                failures.append(str(last_error))
+                continue
+            response = candidate_response
+            break
+        if response is None:
+            if len(failures) == 1 and last_error is not None:
+                raise last_error
             raise POIUpstreamError(
-                f"Overpass 网络请求失败：{type(exc).__name__}"
-            ) from exc
-        if response.status_code == 429:
-            raise POIRateLimitError("Overpass 请求受到 HTTP 429 限流")
-        if response.status_code >= 500:
-            raise POIUpstreamError(
-                f"Overpass 服务异常：HTTP {response.status_code}"
+                "Overpass 所有端点均不可用：" + "；".join(failures)
             )
         if response.status_code != 200:
             raise POIResponseError(
@@ -740,13 +1043,26 @@ class OverpassPOIAdapter:
         clauses = []
         for category in query.categories:
             tag = self._category_filters[category]
-            for element_type in ("node", "way", "relation"):
+            for element_type in self._element_types_for_category(category):
                 clauses.append(
                     f'{element_type}["{tag.key}"="{tag.value}"]'
                     f"(around:{query.radius_m},{query.latitude:.8f},"
                     f"{query.longitude:.8f});"
                 )
-        return "[out:json][timeout:25];(" + "".join(clauses) + ");out center tags;"
+        server_timeout = max(1, math.ceil(self._timeout_seconds))
+        return (
+            f"[out:json][timeout:{server_timeout}];"
+            + "(" + "".join(clauses) + ");out center tags;"
+        )
+
+    def _element_types_for_category(self, category: str) -> tuple[str, ...]:
+        # Keep the old all-element behavior for direct adapter users. The
+        # configured application provider passes a narrower per-tag plan so
+        # public Overpass instances do not build unnecessary relation indexes.
+        return self._category_element_types.get(
+            category,
+            ("node", "way", "relation"),
+        )
 
     def _parse_element(
         self,
@@ -834,6 +1150,32 @@ class FallbackPOIAdapter:
             source = POISourceMeta.model_validate(source_data)
             return result.model_copy(deep=True, update={"source": source})
 
+    def search_fallback(
+        self,
+        query: POIQuery,
+        *,
+        source_template: POISourceMeta | None = None,
+    ) -> POIFeatureSet:
+        """Return Fixture data after a known outage, without another primary call."""
+        result = self._fallback.search(query)
+        source_data = result.source.model_dump()
+        source_data.update(
+            fallback_from=(
+                source_template.fallback_from
+                if source_template is not None
+                and source_template.fallback_from is not None
+                else _provider_of(self._primary)
+            ),
+            fallback_reason=(
+                source_template.fallback_reason
+                if source_template is not None
+                and source_template.fallback_reason is not None
+                else "POIUpstreamError"
+            ),
+        )
+        source = POISourceMeta.model_validate(source_data)
+        return result.model_copy(deep=True, update={"source": source})
+
 
 def _provider_of(adapter: POISourceAdapter) -> POIProvider:
     provider = getattr(adapter, "provider", None)
@@ -853,6 +1195,73 @@ def _max_categories_per_query(adapter: POISourceAdapter) -> int | None:
     if not isinstance(value, int) or value <= 0:
         raise ValueError("POI Adapter 类别预算必须是正整数")
     return value
+
+
+def _chunks(values: Sequence[str], size: int) -> list[list[str]]:
+    return [list(values[start : start + size]) for start in range(0, len(values), size)]
+
+
+def _merge_category_partitions(
+    query: POIQuery,
+    feature_sets: Sequence[POIFeatureSet],
+    failures: Sequence[tuple[list[str], POIAvailabilityError]],
+) -> POIFeatureSet:
+    providers = {item.source.provider for item in feature_sets}
+    dataset_ids = {item.source.dataset_id for item in feature_sets}
+    if len(providers) != 1 or len(dataset_ids) != 1:
+        raise ValueError("POI 类别分区结果必须来自同一数据源")
+
+    records_by_id: dict[str, POIRecord] = {}
+    for feature_set in feature_sets:
+        for record in feature_set.records:
+            records_by_id.setdefault(record.poi_id, record.model_copy(deep=True))
+    all_records = sorted(
+        records_by_id.values(),
+        key=lambda item: (item.distance_m or 0, item.poi_id),
+    )
+    records = all_records[: query.limit]
+    upstream_available_count = sum(
+        item.source.available_record_count
+        if item.source.available_record_count is not None
+        else item.source.record_count
+        for item in feature_sets
+    )
+    incomplete = bool(failures) or any(
+        item.source.is_truncated for item in feature_sets
+    )
+    available_record_count = max(len(all_records), upstream_available_count)
+    unavailable_categories = [
+        category
+        for categories, _ in failures
+        for category in categories
+    ]
+    availability_warnings = [
+        f"{'、'.join(categories)}：{type(error).__name__}："
+        f"{str(error).strip() or '上游服务不可用'}"
+        for categories, error in failures
+    ]
+    base = feature_sets[0].source
+    source = base.model_copy(
+        deep=True,
+        update={
+            "queried_at": max(item.source.queried_at for item in feature_sets),
+            "record_count": len(records),
+            "available_record_count": available_record_count,
+            "is_truncated": (
+                incomplete or available_record_count > len(records)
+            ),
+            "dataset_record_count": None,
+            "cache_hit": all(item.source.cache_hit for item in feature_sets),
+            "unavailable_categories": unavailable_categories,
+            "availability_warnings": availability_warnings,
+        },
+    )
+    return POIFeatureSet(
+        query=query.model_copy(deep=True),
+        records=records,
+        source=source,
+        metrics=calculate_poi_metrics(query, records),
+    )
 
 
 def _response_json(response: HTTPResponse, *, provider: str) -> dict[str, Any]:

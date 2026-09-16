@@ -79,6 +79,8 @@ class POISourceMeta(BaseModel):
     quality_notice: NonEmptyString | None = None
     fallback_from: POIProvider | None = None
     fallback_reason: NonEmptyString | None = None
+    unavailable_categories: list[NonEmptyString] = Field(default_factory=list)
+    availability_warnings: list[NonEmptyString] = Field(default_factory=list)
     cache_hit: bool = False
     evidence_snapshot_id: NonEmptyString | None = None
     evidence_reused: bool = False
@@ -138,15 +140,22 @@ class POISourceMeta(BaseModel):
             and self.record_count > self.available_record_count
         ):
             raise ValueError("POI 返回数不能超过查询可用记录数")
-        if self.is_truncated != (
+        count_was_truncated = (
             self.available_record_count is not None
             and self.available_record_count > self.record_count
+        )
+        if self.is_truncated != (
+            count_was_truncated or bool(self.unavailable_categories)
         ):
             raise ValueError("POI 截断标记必须与查询可用记录数一致")
         if self.is_synthetic and self.quality_notice is None:
             raise ValueError("合成 POI 来源必须声明质量边界")
         if not self.is_synthetic and self.quality_notice is not None:
             raise ValueError("非合成 POI 来源不能使用合成数据质量声明")
+        if bool(self.unavailable_categories) != bool(self.availability_warnings):
+            raise ValueError("POI 不可用类别必须同时提供上游错误说明")
+        if self.unavailable_categories and not self.is_truncated:
+            raise ValueError("存在不可用类别时 POI 证据必须标记为不完整")
         return self
 
 

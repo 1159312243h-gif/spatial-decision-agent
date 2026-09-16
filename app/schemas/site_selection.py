@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from practice.site_selection import (
     AnalysisScope,
+    AgentCollaborationReport,
+    AgentHarnessReport,
     AgentExecutionPlan,
     AgentStepTrace,
     AnalysisResult,
@@ -147,6 +149,8 @@ class SiteSelectionAnalysisResponse(BaseModel):
     evidence_review_report: EvidenceReviewReport | None = None
     execution_plan: AgentExecutionPlan | None = None
     agent_trace: list[AgentStepTrace] = Field(default_factory=list)
+    collaboration_report: AgentCollaborationReport | None = None
+    agent_harness_report: AgentHarnessReport | None = None
     errors: list[NonEmptyString] = Field(default_factory=list)
 
     @classmethod
@@ -162,6 +166,8 @@ class SiteSelectionAnalysisResponse(BaseModel):
             evidence_review_report=state.evidence_review_report,
             execution_plan=state.execution_plan,
             agent_trace=state.agent_trace,
+            collaboration_report=state.collaboration_report,
+            agent_harness_report=state.agent_harness_report,
             errors=state.errors,
         )
 

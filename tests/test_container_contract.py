@@ -58,7 +58,7 @@ def test_compose_explicitly_wires_api_mcp_workbench_and_storage() -> None:
             "${SITE_SELECTION_POI_TIMEOUT_SECONDS:-15}"
         )
         assert environment["SITE_SELECTION_POI_MAX_ATTEMPTS"] == (
-            "${SITE_SELECTION_POI_MAX_ATTEMPTS:-2}"
+            "${SITE_SELECTION_POI_MAX_ATTEMPTS:-1}"
         )
         assert environment["SITE_SELECTION_POI_FAILURE_THRESHOLD"] == (
             "${SITE_SELECTION_POI_FAILURE_THRESHOLD:-12}"

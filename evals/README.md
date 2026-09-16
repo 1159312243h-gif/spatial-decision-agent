@@ -26,6 +26,15 @@ python .\scripts\run_evaluations.py
 结果目录：
 
 - `results/summary.json`：功能评测结果；
+- `results/agent-summary.json`：多 Agent Harness 协议与门禁评测结果；
 - `results/performance.json`：本机 Fixture 性能记录。
 
 结果包含运行环境和生成时间，允许在不同机器重新生成，不作为源码中的跨机器固定值。
+
+多 Agent 专项冻结集位于 `agent-cases.json`，运行：
+
+```powershell
+python .\scripts\run_agent_evaluations.py
+```
+
+该套件使用 Scripted Model 检查委派、反思恢复、证据引用、人工升级和预算收敛，不衡量真实模型语义质量。

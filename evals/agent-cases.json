@@ -1,0 +1,276 @@
+{
+  "suite_id": "site-selection-agent-harness",
+  "version": "1.0.0",
+  "frozen_at": "2026-09-12T00:00:00Z",
+  "cases": [
+    {
+      "case_id": "AGENT-001",
+      "scenario": "direct_review_accept",
+      "goal": "accept",
+      "steps": [
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "review",
+            "objective": "执行终态交叉检查",
+            "rationale": "确定性证据完整",
+            "evidence_references": ["$ref:gis"]
+          }
+        },
+        {
+          "role": "review",
+          "response": {
+            "action": "accept",
+            "summary": "证据与结论一致",
+            "rationale": "未发现越界结论",
+            "evidence_references": ["$ref:gis"]
+          }
+        }
+      ],
+      "expected": {
+        "status": "completed",
+        "collaboration_status": "accepted",
+        "delegation_count": 0,
+        "reflection_rounds": 0,
+        "llm_calls": 2
+      }
+    },
+    {
+      "case_id": "AGENT-002",
+      "scenario": "poi_delegation_accept",
+      "goal": "accept",
+      "steps": [
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "delegate",
+            "target_role": "poi",
+            "objective": "核对 POI 来源与完整度",
+            "rationale": "需要专项证据意见",
+            "evidence_references": ["$ref:poi"]
+          }
+        },
+        {
+          "role": "poi",
+          "response": {
+            "summary": "POI 来源可追踪",
+            "stance": "support",
+            "findings": ["评分组具备来源标识"],
+            "evidence_references": ["$ref:poi"]
+          }
+        },
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "review",
+            "objective": "复核专家意见",
+            "rationale": "POI 专项核验已返回",
+            "evidence_references": ["$ref:poi"]
+          }
+        },
+        {
+          "role": "review",
+          "response": {
+            "action": "accept",
+            "summary": "专家意见与证据一致",
+            "rationale": "引用均在白名单内",
+            "evidence_references": ["$ref:poi"]
+          }
+        }
+      ],
+      "expected": {
+        "status": "completed",
+        "collaboration_status": "accepted",
+        "delegation_count": 1,
+        "reflection_rounds": 0,
+        "llm_calls": 4
+      }
+    },
+    {
+      "case_id": "AGENT-003",
+      "scenario": "critic_redelegation_recovery",
+      "goal": "accept",
+      "steps": [
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "delegate",
+            "target_role": "poi",
+            "objective": "检查 POI 证据",
+            "rationale": "先核验市场证据",
+            "evidence_references": ["$ref:poi"]
+          }
+        },
+        {
+          "role": "poi",
+          "response": {
+            "summary": "POI 证据可用",
+            "stance": "support",
+            "findings": ["来源信息完整"],
+            "evidence_references": ["$ref:poi"]
+          }
+        },
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "review",
+            "objective": "交叉检查当前意见",
+            "rationale": "第一轮专家核验完成",
+            "evidence_references": ["$ref:poi"]
+          }
+        },
+        {
+          "role": "review",
+          "response": {
+            "action": "redelegate",
+            "summary": "缺少空间证据交叉验证",
+            "rationale": "需要独立 Spatial Agent 核验",
+            "target_role": "spatial",
+            "follow_up_objective": "检查 CRS、几何与空间指标",
+            "evidence_references": ["$ref:gis"]
+          }
+        },
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "delegate",
+            "target_role": "spatial",
+            "objective": "执行空间证据补充核验",
+            "rationale": "响应 Critic 反驳",
+            "evidence_references": ["$ref:gis"]
+          }
+        },
+        {
+          "role": "spatial",
+          "response": {
+            "summary": "空间证据可复核",
+            "stance": "support",
+            "findings": ["CRS 与指标一致"],
+            "evidence_references": ["$ref:gis"]
+          }
+        },
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "review",
+            "objective": "形成第二轮结论",
+            "rationale": "POI 与空间意见均已返回",
+            "evidence_references": ["$ref:poi", "$ref:gis"]
+          }
+        },
+        {
+          "role": "review",
+          "response": {
+            "action": "accept",
+            "summary": "反驳问题已闭环",
+            "rationale": "补充证据与原结论一致",
+            "evidence_references": ["$ref:poi", "$ref:gis"]
+          }
+        }
+      ],
+      "expected": {
+        "status": "completed",
+        "collaboration_status": "accepted",
+        "delegation_count": 2,
+        "reflection_rounds": 1,
+        "llm_calls": 8
+      }
+    },
+    {
+      "case_id": "AGENT-004",
+      "scenario": "unknown_evidence_reference",
+      "goal": "safe_terminal",
+      "steps": [
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "review",
+            "objective": "尝试引用外部事实",
+            "rationale": "对抗性协议用例",
+            "evidence_references": ["$ref:unknown"]
+          }
+        }
+      ],
+      "expected": {
+        "status": "failed",
+        "collaboration_status": "failed",
+        "delegation_count": 0,
+        "reflection_rounds": 0,
+        "llm_calls": 1,
+        "protocol_violation_detected": true
+      }
+    },
+    {
+      "case_id": "AGENT-005",
+      "scenario": "explicit_human_escalation",
+      "goal": "safe_terminal",
+      "steps": [
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "human_review",
+            "objective": "转人工核验政策边界",
+            "rationale": "公开证据不足以作出合规结论",
+            "evidence_references": ["$ref:rule"]
+          }
+        }
+      ],
+      "expected": {
+        "status": "human_review",
+        "collaboration_status": "human_review",
+        "delegation_count": 0,
+        "reflection_rounds": 0,
+        "llm_calls": 1
+      }
+    },
+    {
+      "case_id": "AGENT-006",
+      "scenario": "reflection_budget_exhaustion",
+      "goal": "safe_terminal",
+      "budget": {
+        "max_delegations": 1,
+        "max_reflection_rounds": 0,
+        "max_llm_calls": 5
+      },
+      "steps": [
+        {
+          "role": "supervisor",
+          "response": {
+            "action": "delegate",
+            "target_role": "poi",
+            "objective": "核对 POI 证据",
+            "rationale": "执行首轮专家核验",
+            "evidence_references": ["$ref:poi"]
+          }
+        },
+        {
+          "role": "poi",
+          "response": {
+            "summary": "POI 证据存在疑点",
+            "stance": "challenge",
+            "findings": ["需要空间专家复核"],
+            "evidence_references": ["$ref:poi"]
+          }
+        },
+        {
+          "role": "review",
+          "response": {
+            "action": "redelegate",
+            "summary": "现有意见不足",
+            "rationale": "仍需空间证据",
+            "target_role": "spatial",
+            "follow_up_objective": "核对空间指标",
+            "evidence_references": ["$ref:gis"]
+          }
+        }
+      ],
+      "expected": {
+        "status": "budget_exhausted",
+        "collaboration_status": "budget_exhausted",
+        "delegation_count": 1,
+        "reflection_rounds": 0,
+        "llm_calls": 3
+      }
+    }
+  ]
+}

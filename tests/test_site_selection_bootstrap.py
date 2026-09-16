@@ -10,6 +10,7 @@ from shapely.geometry import shape
 from app.site_selection_bootstrap import (
     SiteSelectionBootstrapError,
     _build_optional_explainer,
+    _build_optional_multi_agent_runtime,
     build_fixture_runtime_registry,
     build_site_selection_bootstrap_from_environment,
     load_fixture_spatial_seed,
@@ -17,6 +18,7 @@ from app.site_selection_bootstrap import (
     seed_fixture_storage,
 )
 from practice.site_selection import (
+    AgentRole,
     AnalysisStatus,
     CandidateParcel,
     ProjectRequest,
@@ -31,6 +33,68 @@ from tests.test_site_selection_async_queue import FakeJobQueue
 
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "data" / "fixtures"
+
+
+def test_optional_multi_agent_runtime_is_explicit_and_role_configurable() -> None:
+    assert (
+        _build_optional_multi_agent_runtime(
+            {},
+            object(),
+            runtime_namespace="fixture",
+        )
+        is None
+    )
+    calls = []
+
+    def client_factory(**kwargs):
+        calls.append(kwargs)
+        return object()
+
+    runtime = _build_optional_multi_agent_runtime(
+        {
+            "SITE_SELECTION_MULTI_AGENT_ENABLED": "true",
+            "LLM_API_KEY": "fixture-key",
+            "LLM_BASE_URL": "https://llm.example/v1",
+            "LLM_MODEL": "default-model",
+            "SITE_SELECTION_REVIEW_AGENT_MODEL": "critic-model",
+            "SITE_SELECTION_MULTI_AGENT_MAX_DELEGATIONS": "4",
+            "SITE_SELECTION_MULTI_AGENT_MAX_REFLECTION_ROUNDS": "1",
+            "SITE_SELECTION_MULTI_AGENT_MAX_LLM_CALLS": "9",
+        },
+        object(),
+        runtime_namespace="fixture",
+        client_factory=client_factory,
+    )
+
+    assert runtime is not None
+    assert calls == [
+        {
+            "api_key": "fixture-key",
+            "base_url": "https://llm.example/v1",
+            "timeout": 15.0,
+            "max_retries": 0,
+        }
+    ]
+    active_runtime = runtime.runtime_for_active_version()
+    assert active_runtime.roster.get(AgentRole.REVIEW).profile.model == "critic-model"
+    assert active_runtime.roster.get(AgentRole.POI).profile.model == "default-model"
+    assert active_runtime.budget.max_delegations == 4
+    assert active_runtime.budget.max_reflection_rounds == 1
+    assert active_runtime.budget.max_llm_calls == 9
+    assert runtime.registry.active_version == "multi-agent-prompts-v1"
+
+
+def test_optional_multi_agent_runtime_requires_complete_llm_config() -> None:
+    with pytest.raises(SiteSelectionBootstrapError, match="LLM_BASE_URL"):
+        _build_optional_multi_agent_runtime(
+            {
+                "SITE_SELECTION_MULTI_AGENT_ENABLED": "true",
+                "LLM_API_KEY": "fixture-key",
+                "LLM_MODEL": "fixture-model",
+            },
+            object(),
+            runtime_namespace="fixture",
+        )
 
 
 def test_optional_explainer_has_bounded_timeout_and_no_default_retries() -> None:

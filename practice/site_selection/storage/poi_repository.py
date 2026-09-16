@@ -91,6 +91,7 @@ class PostgresPOIRepository:
         latitude: float,
         radius_m: float,
         categories: list[NonEmptyString] | None = None,
+        source: str | None = None,
         limit: int = 100,
     ) -> list[NearbyPOI]:
         if not -180 <= longitude <= 180 or not -90 <= latitude <= 90:
@@ -110,6 +111,13 @@ class PostgresPOIRepository:
         if categories:
             category_clause = " AND category = ANY(:categories)"
             parameters["categories"] = list(dict.fromkeys(categories))
+        source_clause = ""
+        if source is not None:
+            normalized_source = source.strip().lower()
+            if not normalized_source:
+                raise ValueError("POI 数据源不能为空")
+            source_clause = " AND source = :source"
+            parameters["source"] = normalized_source
 
         rows = self._connection.execute(
             text(
@@ -127,6 +135,7 @@ class PostgresPOIRepository:
                 )
                 """
                 + category_clause
+                + source_clause
                 + " ORDER BY distance_m, source, source_id LIMIT :limit"
             ),
             parameters,

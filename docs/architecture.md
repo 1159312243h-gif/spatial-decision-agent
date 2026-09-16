@@ -101,7 +101,9 @@ flowchart LR
 
 Supervisor 组合 `supervisor_intake -> candidate_discovery -> candidate_confirmation -> analysis_submitted -> analysis_wait -> analysis_completed`。两个等待节点都使用 LangGraph `interrupt()`。确认前校验候选属于发现报告；登记用地进入 `full_compliance`，零售市场网格进入 `market_selection`，非零售项目仍不能绕过用地门禁。API 与 Worker 通过共享工厂构造同一拓扑，PostgresSaver 持久化 checkpoint，Redis 保存 session TTL、转换锁、RunState 和审计事件。
 
-每次运行返回按计划顺序排列的 `AgentStepTrace`，字段包括节点、Agent 角色、Skill 名称/版本、依赖、并行组、状态、耗时和脱敏异常类型。业务图中的所有节点当前均为 `llm_allowed=false`：LLM 仍只在图外解释已完成证据，不参与 GIS 数值、POI 指标、规则命中或排序。
+每次运行返回按计划顺序排列的 `AgentStepTrace`，字段包括节点、Agent 角色、Skill 名称/版本、依赖、并行组、状态、耗时和脱敏异常类型。业务图中的所有节点当前均为 `llm_allowed=false`：LLM 只在确定性 Evidence Review 之后的可选 Harness/协作层解释和复核已完成证据，不参与 GIS 数值、POI 指标、规则命中或排序。
+
+启用多 Agent 复核时，`AgentHarness` 先解析活动 Prompt 版本，将 `AgentState` 投影为结构化证据上下文并执行字符数、引用白名单和预算门禁，再装配 Supervisor、POI、Spatial、Policy、Review 五角色协作图。Harness 与协作图分别返回 `agent_harness_report` 和 `collaboration_report`；前者记录版本、上下文、预算和阶段 Trace，后者记录角色消息、委派、反思和终态。Prompt 候选只允许在线下同冻结集对照，通过门禁并经人工批准后晋级，支持审计回滚。
 
 ### Supervisor 状态与子图边界
 
@@ -209,7 +211,7 @@ Compose 启动六个服务：API `8000`、RQ Worker、MCP `8001`、Workbench `85
 
 ## 7. 当前 Agent 边界与下一阶段
 
-当前已实现结构化、确定性的多 Agent 执行图、节点级 Trace、失败门禁、MCP 工具白名单、政策检索组件、异步运行时、带双 interrupt 的 Supervisor，以及位于 Supervisor 前的自然语言场景与约束版本层。对话层支持约束追加、覆盖、删除、冲突提示、区域转换、人工确认和 Redis 恢复；确认版本可直接提供零售候选发现边界。Supervisor 已完成 PostgresSaver、Redis session 协调、HTTP、Worker 与 Workbench 接入；正式分析复用原 `/runs` RQ 链，Worker 终态恢复为主路径，GET 对账为兜底。多 API 竞争、数据库故障切换和滚动升级仍需单独验证。
+当前已实现确定性 Agent/Skill DAG、五角色 LLM 协作图、统一 Harness、节点级 Trace、失败门禁、MCP 工具白名单、政策检索组件、异步运行时、带双 interrupt 的 Supervisor，以及位于 Supervisor 前的自然语言场景与约束版本层。对话层支持约束追加、覆盖、删除、冲突提示、区域转换、人工确认和 Redis 恢复；确认版本可直接提供零售候选发现边界。Supervisor 已完成 PostgresSaver、Redis session 协调、HTTP、Worker 与 Workbench 接入；正式分析复用原 `/runs` RQ 链，Worker 终态恢复为主路径，GET 对账为兜底。Prompt 进化目前是离线候选、冻结集门禁、人工晋级与回滚，不是运行时自改代码或在线训练。多 API 竞争、数据库故障切换、Prompt Registry 持久化和滚动升级仍需单独验证。
 
 尚未实现的部分不得作为现成功能表述：
 

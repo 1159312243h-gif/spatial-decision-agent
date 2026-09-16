@@ -411,13 +411,13 @@ def test_overpass_builds_controlled_query_and_parses_node_and_way() -> None:
     }
     assert {record.category for record in result.records} == {"地铁站", "医院"}
     assert result.source.provider is POIProvider.OSM
-    statement = client.post_calls[0][1]["data"]
+    statement = client.get_calls[0][1]["data"]
     assert '["railway"="station"]' in statement
     assert '["amenity"="hospital"]' in statement
     assert "121.47000000" in statement
     assert limiter.calls == 1
     assert adapter.max_categories_per_query == 3
-    assert "categories=3" in adapter.cache_token
+    assert adapter.cache_token == "overpass:overpass-live-v1:categories=3"
 
 
 def test_overpass_rejects_unknown_category_before_http() -> None:
@@ -427,7 +427,7 @@ def test_overpass_rejects_unknown_category_before_http() -> None:
     with pytest.raises(ValueError, match="缺少类别"):
         adapter.search(query(categories=["未知类别"]))
 
-    assert client.post_calls == []
+    assert client.get_calls == []
 
 
 def test_overpass_reports_deduplicated_count_before_query_limit() -> None:
@@ -477,6 +477,32 @@ def test_overpass_maps_429_to_rate_limit() -> None:
 
     with pytest.raises(POIRateLimitError, match="429"):
         adapter.search(query())
+
+
+def test_overpass_switches_endpoint_after_upstream_5xx() -> None:
+    client = FakeHTTPClient(
+        [
+            FakeResponse(504, {}),
+            FakeResponse(200, {"elements": []}),
+        ]
+    )
+    limiter = RecordingLimiter()
+    adapter = OverpassPOIAdapter(
+        client,
+        overpass_filters(),
+        endpoint="https://primary.example/api/interpreter",
+        fallback_endpoints=("https://secondary.example/api/interpreter",),
+        rate_limiter=limiter,
+    )
+
+    result = adapter.search(query())
+
+    assert result.source.provider is POIProvider.OSM
+    assert [call[0] for call in client.get_calls] == [
+        "https://primary.example/api/interpreter",
+        "https://secondary.example/api/interpreter",
+    ]
+    assert limiter.calls == 2
 
 
 def test_gcj02_transformer_round_trip_and_outside_china_identity() -> None:

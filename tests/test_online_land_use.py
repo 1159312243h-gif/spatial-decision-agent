@@ -35,8 +35,8 @@ class FakeHTTPClient:
         self.calls = []
         self.closed = False
 
-    def post(self, url, *, data, timeout):
-        self.calls.append((url, data, timeout))
+    def get(self, url, *, params, timeout):
+        self.calls.append((url, params, timeout))
         outcome = self.responses.pop(0)
         if isinstance(outcome, Exception):
             raise outcome

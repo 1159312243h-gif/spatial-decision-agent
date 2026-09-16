@@ -23,6 +23,7 @@ from workbench.site_selection_client import (
     SiteSelectionAPIClient,
     SiteSelectionAPIError,
     agent_plan_rows,
+    agent_collaboration_rows,
     agent_trace_rows,
     available_discovery_poi_categories,
     available_poi_categories,
@@ -1720,6 +1721,22 @@ if run is not None and run_payload is not None:
         plan_rows = agent_plan_rows(run)
         trace_rows = agent_trace_rows(run)
         review_rows = evidence_review_rows(run)
+        collaboration_rows = agent_collaboration_rows(run)
+        if run.analysis.agent_harness_report is not None:
+            harness = run.analysis.agent_harness_report
+            st.subheader("Agent Harness")
+            version_col, prompt_col, context_col, budget_col = st.columns(4)
+            version_col.metric("Harness", harness.harness_version)
+            prompt_col.metric("Prompt", harness.prompt_version)
+            context_col.metric(
+                "证据引用",
+                harness.context.evidence_reference_count,
+            )
+            budget_col.metric(
+                "LLM 预算",
+                f"{harness.budget.used_llm_calls}/"
+                f"{harness.budget.max_llm_calls}",
+            )
         if run.analysis.execution_plan is not None:
             st.caption(
                 "执行计划："
@@ -1732,6 +1749,23 @@ if run is not None and run_payload is not None:
         st.dataframe(trace_rows, hide_index=True, width="stretch")
         st.subheader("质量门禁")
         st.dataframe(review_rows, hide_index=True, width="stretch")
+        if run.analysis.collaboration_report is not None:
+            collaboration = run.analysis.collaboration_report
+            st.subheader("多 Agent 协作复核")
+            status_col, delegation_col, reflection_col, calls_col = st.columns(4)
+            status_col.metric("终态", collaboration.status.value)
+            delegation_col.metric("委派", collaboration.delegation_count)
+            reflection_col.metric("反思轮次", collaboration.reflection_rounds)
+            calls_col.metric("LLM 调用", collaboration.llm_calls)
+            if collaboration.human_review_reason is not None:
+                st.warning(collaboration.human_review_reason)
+            else:
+                st.caption(collaboration.final_summary)
+            st.dataframe(
+                collaboration_rows,
+                hide_index=True,
+                width="stretch",
+            )
 
     with evidence_tab:
         if run.explanation is not None:

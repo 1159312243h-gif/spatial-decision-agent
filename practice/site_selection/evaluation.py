@@ -325,47 +325,10 @@ class FrozenEvaluationRunner:
 
     def _run_runtime(self, case: EvaluationCase) -> dict[str, Any]:
         project_type = ProjectType(case.input["project_type"])
-        parcel_id = "MALL-EVAL-01" if project_type is ProjectType.SHOPPING_MALL else "LOG-EVAL-01"
-        candidate_dataset_id = f"{project_type.value}-candidate-eval"
-        constraint_dataset_id = f"{project_type.value}-constraint-eval"
-        constraint_point = (
-            Point(10_000, 10_000)
-            if case.scenario == "no_rule_match"
-            else Point(50, 50)
-        )
-        datasets: dict[str, gpd.GeoDataFrame] = {
-            candidate_dataset_id: _candidate_frame(parcel_id),
-            constraint_dataset_id: _constraint_frame(constraint_point),
-        }
-        if case.scenario == "missing_spatial_dataset":
-            datasets.pop(candidate_dataset_id)
-        manifests = [
-            _manifest(candidate_dataset_id, ["parcel_id", "land_use"]),
-            _manifest(constraint_dataset_id, ["constraint_id", "level"]),
-        ]
-        request = ProjectRequest(
-            request_id=f"evaluation-{case.case_id.lower()}",
+        result = self.build_runtime_state(
             project_type=project_type,
-            candidate_parcels=[
-                CandidateParcel(
-                    parcel_id=parcel_id,
-                    longitude=121.47,
-                    latitude=31.23,
-                    geometry_dataset_id=candidate_dataset_id,
-                )
-            ],
-            requested_at=datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc),
-        )
-        result = run_parallel_site_selection_workflow(
-            request,
-            manifests,
-            _workflow_dependencies(
-                project_type,
-                parcel_id=parcel_id,
-                candidate_dataset_id=candidate_dataset_id,
-                constraint_dataset_id=constraint_dataset_id,
-                datasets=datasets,
-            ),
+            scenario=case.scenario,
+            request_id=f"evaluation-{case.case_id.lower()}",
         )
         review = result.evidence_review_report
         return {
@@ -380,6 +343,58 @@ class FrozenEvaluationRunner:
             "error_count": len(result.errors),
         }
 
+    def build_runtime_state(
+        self,
+        *,
+        project_type: ProjectType = ProjectType.SHOPPING_MALL,
+        scenario: str = "policy_rule_match",
+        request_id: str = "agent-evaluation-base",
+    ) -> AgentState:
+        """Build one deterministic completed state for Agent protocol evals."""
+
+        parcel_id = "MALL-EVAL-01" if project_type is ProjectType.SHOPPING_MALL else "LOG-EVAL-01"
+        candidate_dataset_id = f"{project_type.value}-candidate-eval"
+        constraint_dataset_id = f"{project_type.value}-constraint-eval"
+        constraint_point = (
+            Point(10_000, 10_000)
+            if scenario == "no_rule_match"
+            else Point(50, 50)
+        )
+        datasets: dict[str, gpd.GeoDataFrame] = {
+            candidate_dataset_id: _candidate_frame(parcel_id),
+            constraint_dataset_id: _constraint_frame(constraint_point),
+        }
+        if scenario == "missing_spatial_dataset":
+            datasets.pop(candidate_dataset_id)
+        manifests = [
+            _manifest(candidate_dataset_id, ["parcel_id", "land_use"]),
+            _manifest(constraint_dataset_id, ["constraint_id", "level"]),
+        ]
+        request = ProjectRequest(
+            request_id=request_id,
+            project_type=project_type,
+            candidate_parcels=[
+                CandidateParcel(
+                    parcel_id=parcel_id,
+                    longitude=121.47,
+                    latitude=31.23,
+                    geometry_dataset_id=candidate_dataset_id,
+                )
+            ],
+            requested_at=datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc),
+        )
+        return run_parallel_site_selection_workflow(
+            request,
+            manifests,
+            _workflow_dependencies(
+                project_type,
+                parcel_id=parcel_id,
+                candidate_dataset_id=candidate_dataset_id,
+                constraint_dataset_id=constraint_dataset_id,
+                datasets=datasets,
+            ),
+        )
+
 
 def load_evaluation_suite(path: str | Path) -> EvaluationSuite:
     return EvaluationSuite.model_validate_json(Path(path).read_text(encoding="utf-8"))
@@ -389,7 +404,7 @@ def write_evaluation_summary(summary: EvaluationSummary, path: str | Path) -> No
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(
-        summary.model_dump_json(indent=2),
+        summary.model_dump_json(indent=2) + "\n",
         encoding="utf-8",
     )
 

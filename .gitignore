@@ -1,6 +1,8 @@
 .venv/
 __pycache__/
 .pytest_cache/
+.pytest_tmp/
+artifacts/
 .env
 *.pyc
 codex.exe_*.log

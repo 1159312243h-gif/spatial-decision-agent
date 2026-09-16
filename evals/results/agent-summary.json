@@ -1,0 +1,189 @@
+{
+  "suite_id": "site-selection-agent-harness",
+  "suite_version": "1.0.0",
+  "prompt_version": "multi-agent-prompts-v1",
+  "generated_at": "2026-09-12T08:20:00.741095Z",
+  "total": 6,
+  "passed": 6,
+  "failed": 0,
+  "metrics": {
+    "task_success_rate": 1.0,
+    "evidence_reference_valid_rate": 1.0,
+    "reflection_recovery_rate": 1.0,
+    "human_escalation_rate": 0.166667,
+    "budget_convergence_rate": 1.0,
+    "protocol_violation_rate": 0.166667,
+    "protocol_violation_detection_rate": 1.0,
+    "average_llm_calls": 3.167,
+    "average_delegations": 0.667
+  },
+  "results": [
+    {
+      "case_id": "AGENT-001",
+      "scenario": "direct_review_accept",
+      "goal": "accept",
+      "passed": true,
+      "elapsed_ms": 12.483,
+      "expected": {
+        "status": "completed",
+        "collaboration_status": "accepted",
+        "delegation_count": 0,
+        "reflection_rounds": 0,
+        "llm_calls": 2,
+        "protocol_violation_detected": false
+      },
+      "actual": {
+        "status": "completed",
+        "collaboration_status": "accepted",
+        "delegation_count": 0,
+        "reflection_rounds": 0,
+        "llm_calls": 2,
+        "evidence_reference_valid": true,
+        "budget_converged": true,
+        "reflection_recovered": false,
+        "human_escalated": false,
+        "protocol_violation_detected": false
+      }
+    },
+    {
+      "case_id": "AGENT-002",
+      "scenario": "poi_delegation_accept",
+      "goal": "accept",
+      "passed": true,
+      "elapsed_ms": 12.57,
+      "expected": {
+        "status": "completed",
+        "collaboration_status": "accepted",
+        "delegation_count": 1,
+        "reflection_rounds": 0,
+        "llm_calls": 4,
+        "protocol_violation_detected": false
+      },
+      "actual": {
+        "status": "completed",
+        "collaboration_status": "accepted",
+        "delegation_count": 1,
+        "reflection_rounds": 0,
+        "llm_calls": 4,
+        "evidence_reference_valid": true,
+        "budget_converged": true,
+        "reflection_recovered": false,
+        "human_escalated": false,
+        "protocol_violation_detected": false
+      }
+    },
+    {
+      "case_id": "AGENT-003",
+      "scenario": "critic_redelegation_recovery",
+      "goal": "accept",
+      "passed": true,
+      "elapsed_ms": 12.406,
+      "expected": {
+        "status": "completed",
+        "collaboration_status": "accepted",
+        "delegation_count": 2,
+        "reflection_rounds": 1,
+        "llm_calls": 8,
+        "protocol_violation_detected": false
+      },
+      "actual": {
+        "status": "completed",
+        "collaboration_status": "accepted",
+        "delegation_count": 2,
+        "reflection_rounds": 1,
+        "llm_calls": 8,
+        "evidence_reference_valid": true,
+        "budget_converged": true,
+        "reflection_recovered": true,
+        "human_escalated": false,
+        "protocol_violation_detected": false
+      }
+    },
+    {
+      "case_id": "AGENT-004",
+      "scenario": "unknown_evidence_reference",
+      "goal": "safe_terminal",
+      "passed": true,
+      "elapsed_ms": 10.975,
+      "expected": {
+        "status": "failed",
+        "collaboration_status": "failed",
+        "delegation_count": 0,
+        "reflection_rounds": 0,
+        "llm_calls": 1,
+        "protocol_violation_detected": true
+      },
+      "actual": {
+        "status": "failed",
+        "collaboration_status": "failed",
+        "delegation_count": 0,
+        "reflection_rounds": 0,
+        "llm_calls": 1,
+        "evidence_reference_valid": true,
+        "budget_converged": true,
+        "reflection_recovered": false,
+        "human_escalated": false,
+        "protocol_violation_detected": true
+      }
+    },
+    {
+      "case_id": "AGENT-005",
+      "scenario": "explicit_human_escalation",
+      "goal": "safe_terminal",
+      "passed": true,
+      "elapsed_ms": 10.504,
+      "expected": {
+        "status": "human_review",
+        "collaboration_status": "human_review",
+        "delegation_count": 0,
+        "reflection_rounds": 0,
+        "llm_calls": 1,
+        "protocol_violation_detected": false
+      },
+      "actual": {
+        "status": "human_review",
+        "collaboration_status": "human_review",
+        "delegation_count": 0,
+        "reflection_rounds": 0,
+        "llm_calls": 1,
+        "evidence_reference_valid": true,
+        "budget_converged": true,
+        "reflection_recovered": false,
+        "human_escalated": true,
+        "protocol_violation_detected": false
+      }
+    },
+    {
+      "case_id": "AGENT-006",
+      "scenario": "reflection_budget_exhaustion",
+      "goal": "safe_terminal",
+      "passed": true,
+      "elapsed_ms": 11.228,
+      "expected": {
+        "status": "budget_exhausted",
+        "collaboration_status": "budget_exhausted",
+        "delegation_count": 1,
+        "reflection_rounds": 0,
+        "llm_calls": 3,
+        "protocol_violation_detected": false
+      },
+      "actual": {
+        "status": "budget_exhausted",
+        "collaboration_status": "budget_exhausted",
+        "delegation_count": 1,
+        "reflection_rounds": 0,
+        "llm_calls": 3,
+        "evidence_reference_valid": true,
+        "budget_converged": true,
+        "reflection_recovered": false,
+        "human_escalated": false,
+        "protocol_violation_detected": false
+      }
+    }
+  ],
+  "environment": {
+    "runtime": "local scripted multi-agent fixtures",
+    "network": "disabled by evaluation design",
+    "scope": "protocol and guardrail regression, not model quality"
+  }
+}

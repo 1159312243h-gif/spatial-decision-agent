@@ -188,6 +188,31 @@ def test_execute_poi_queries_uses_bounded_parallelism_and_keeps_order() -> None:
     assert [item.query for item in result.poi_feature_sets] == [first, second]
 
 
+def test_execute_poi_queries_uses_gateway_batch_contract_when_available() -> None:
+    initial_state = ProjectIntakeSkill().run(shopping_request())
+
+    class BatchGateway:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def search(self, prepared_query: POIQuery):
+            raise AssertionError(f"unexpected scalar search: {prepared_query.query_id}")
+
+        def search_many(self, prepared_queries, *, max_workers):
+            self.calls.append((list(prepared_queries), max_workers))
+            delegate = MockPOIGateway(clock=lambda: NOW)
+            return [delegate.search(item) for item in prepared_queries]
+
+    gateway = BatchGateway()
+
+    result = execute_poi_queries(initial_state, gateway, max_workers=3)
+
+    assert gateway.calls == [(initial_state.poi_queries, 3)]
+    assert [item.query for item in result.poi_feature_sets] == (
+        initial_state.poi_queries
+    )
+
+
 def test_execute_poi_queries_rejects_non_positive_worker_count() -> None:
     initial_state = ProjectIntakeSkill().run(shopping_request())
 

@@ -8,6 +8,7 @@ from .domain import NonEmptyString
 
 
 class AgentRole(StrEnum):
+    SUPERVISOR = "supervisor"
     ORCHESTRATOR = "orchestrator"
     POI = "poi"
     SPATIAL = "spatial"
